@@ -768,7 +768,7 @@ class _CutElement:
 		# distance from cut-center in local coordinates
 		DP = self.centroid - cplane.center
 		LP = Math.vec3(DP.dot(cplane.dx), DP.dot(cplane.dy), DP.dot(cplane.dz))
-		# compute lumped moments in cut-plane local coordinates (LP.X is zero in local coords!)
+		# compute lumped moments due to lumped force eccentricity in cut-plane local coordinates (LP.X is zero in local coords!)
 		M = Math.vec3(LP.y*F.z - LP.z*F.y, LP.z*F.x, -LP.y*F.x)
 		# done
 		return (F, M)
@@ -795,8 +795,17 @@ class _CutElement:
 		sf /= wsum
 		# cplane
 		cplane = self.cplane
-		n = cplane.dx
-		# extract membrane part + oop shear (constant part)
+		# element orientation and its inverse
+		Re = self.ele.orientation.computeOrientation()
+		ReT = Re.transpose()
+		# closest local axes aligned with plane: project cutplane on shell plane
+		# explanation: if we use the real normal we need to compute the scale factor on the cut face
+		# which will be (in general) different from the thicness (normal to the shell plane)
+		ele_normal = Re.col(2)
+		n = (cplane.dx - ele_normal*cplane.dx.dot(ele_normal)).normalized()
+		# express it in element local coordinates
+		n = ReT*n
+		# extract membrane part + oop shear (constant part) in element local coordinates
 		s = Math.vec(6)
 		s[0] = sf[0] # Fxx
 		s[1] = sf[1] # Fyy
@@ -804,26 +813,23 @@ class _CutElement:
 		s[3] = sf[2] # Fxy
 		s[4] = sf[7] # Fyz = |s23
 		s[5] = sf[6] # Fxz = |s13
-		# traction vector in global coordinates !! warning this is local
+		# traction vector in element local coordinates
 		T = Math.vec3(
 			n.x*s[0] + n.y*s[3] + n.z*s[5],
 			n.x*s[3] + n.y*s[1] + n.z*s[4],
 			n.x*s[5] + n.y*s[4] + n.z*s[2])
+		# traction vector in global coordinates
+		T = Re*T
 		# lumped traction vector in cut-plane local coordinates
 		F = Math.vec3(T.dot(cplane.dx)*self.csize, T.dot(cplane.dy)*self.csize, T.dot(cplane.dz)*self.csize)
-		# distance from cut-center in local coordinates
-		DP = self.centroid - cplane.center
-		LP = Math.vec3(DP.dot(cplane.dx), DP.dot(cplane.dy), DP.dot(cplane.dz))
-		# compute lumped moments in cut-plane local coordinates (LP.X is zero in local coords!)
-		M = Math.vec3(LP.y*F.z - LP.z*F.y, LP.z*F.x, -LP.y*F.x)
-		# extract bending part (linear part)
+		# extract bending part in element local coordinates
 		s[0] = sf[3] # Mxx
 		s[1] = sf[4] # Myy
 		s[2] = 0.0   # Mzz = 0
 		s[3] = sf[5] # Mxy
 		s[4] = 0.0   # Myz = 0
 		s[5] = 0.0   # Mxz = 0
-		# traction couple vector in global coordinates
+		# traction couple vector in element local coordinates
 		T = Math.vec3(
 			n.x*s[0] + n.y*s[3] + n.z*s[5],
 			n.x*s[3] + n.y*s[1] + n.z*s[4],
@@ -837,8 +843,15 @@ class _CutElement:
 		# M = d*S1 - d*S2 = d*S1 + d*S1 = S1*H swapping first and second column, changing size of second col.
 		# but S1*H is M... so we can perform the same operations we did on the memebrane forces, just doing the swap
 		T[0],T[1] = -T[1],T[0]
-		# add lumped traction couple vector in cut-plane local coordinates
-		M += Math.vec3(T.dot(cplane.dx)*self.csize, T.dot(cplane.dy)*self.csize, T.dot(cplane.dz)*self.csize)
+		# traction couple vector in global coordinates
+		T = Re*T
+		# lumped traction couple vector in cut-plane local coordinates
+		M = Math.vec3(T.dot(cplane.dx)*self.csize, T.dot(cplane.dy)*self.csize, T.dot(cplane.dz)*self.csize)
+		# distance from cut-center in local coordinates
+		DP = self.centroid - cplane.center
+		LP = Math.vec3(DP.dot(cplane.dx), DP.dot(cplane.dy), DP.dot(cplane.dz))
+		# add lumped moments due to lumped force eccentricity in cut-plane local coordinates (LP.X is zero in local coords!)
+		M += Math.vec3(LP.y*F.z - LP.z*F.y, LP.z*F.x, -LP.y*F.x)
 		# done
 		return (F, M)
 	def _getTractionBeam(self, results):
