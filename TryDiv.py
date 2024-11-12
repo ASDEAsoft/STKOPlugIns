@@ -10,7 +10,7 @@ U = db.getNodalResult('Displacement')
 all_stages = db.getStageIDs()
 last_stage = all_stages[-1]
 all_steps = db.getStepIDs(last_stage)
-last_step = all_steps[933]
+last_step = all_steps[-1]
 opt = MpcOdbVirtualResultEvaluationOptions()
 opt.stage = last_stage
 opt.step = last_step
@@ -38,13 +38,11 @@ c = ele.nodes[0].position + u[ele.nodes[0].id]
 for iF, iM, node in zip(f, m, ele.nodes):
 	F += iF
 	M += iM
-	print(*iF, *iM)
 	d = node.position+u[node.id] - c
 	iFM = d.cross(iF)
-	print(*d, '...', *iFM)
 	M += iFM
-print(F)
-print(M)
+print(*F)
+print(*M)
 
 print("===========================")
 def _pv(x):
@@ -56,22 +54,34 @@ M2 = m[1]
 X1 = ele.nodes[0].position + u[ele.nodes[0].id]
 X2 = ele.nodes[1].position + u[ele.nodes[1].id]
 XC = (X1+X2)/2.0
-R = Math.vec(6, 0.0)
+R1 = Math.vec(6, 0.0)
+R2 = Math.vec(6, 0.0)
 K = Math.mat(6, 6, 0.0)
 # eq X1-XC
 print('eq X1-XC')
-_pv(R)
 for i in range(3):
 	K[i,i] = -1.0
 	K[i+3,i+3] = -1.0
-	R[i] = F1[i]
-	R[i+3] = M1[i]
-D = XC-X1
-_pv(D)
-K[3,1]= D.z; K[3,2]=-D.y
-K[4,0]=-D.z; K[4,2]= D.x
-K[5,0]= D.y; K[5,1]=-D.x
-print(K)
-FC = K.solve(R)
-_pv(FC)
-_pv(K*FC - R)
+	R1[i] = F1[i]
+	R1[i+3] = M1[i]
+	R2[i] = F2[i]
+	R2[i+3] = M2[i]
+D1 = XC-X1
+D2 = XC-X2
+_pv(R1)
+_pv(R2)
+K[3,1]= D1.z; K[3,2]=-D1.y
+K[4,0]=-D1.z; K[4,2]= D1.x
+K[5,0]= D1.y; K[5,1]=-D1.x
+FC1 = K.solve(R1)
+_pv(FC1)
+_pv(K*FC1 - R1)
+K[3,1]= D2.z; K[3,2]=-D2.y
+K[4,0]=-D2.z; K[4,2]= D2.x
+K[5,0]= D2.y; K[5,1]=-D2.x
+FC2 = K.solve(R2)
+_pv(FC2)
+_pv(K*FC2 - R2)
+mm1 = -M1[2]
+mm2 =  M2[2]
+print((mm1+mm2)/2)
