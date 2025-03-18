@@ -1,0 +1,9 @@
+# tag x y z
+node 1 0 0 0
+node 2 0 0 8
+node 3 0 0 67
+node 4 0 0 75
+node 5 0 0 0
+node 6 0 0 75
+node 7 0 0 0
+node 8 0 0 75
