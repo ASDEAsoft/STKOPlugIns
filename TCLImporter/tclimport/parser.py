@@ -414,6 +414,10 @@ def _parse_material_1d(doc, words):
 				mmax = float(wj)
 			counter += 2
 		params = [other, mmin, mmax]
+	elif name == 'Series':
+		# $matTag $tag1 $tag2 ...
+		# note: use float just in case the source file has a .0 ...
+		params = [int(float(words[i])) for i in range(3, n)]
 	elif name == 'Pinching4':
 		# $matTag 
 		# $ePf1 $ePd1 $ePf2 $ePd2 $ePf3 $ePd3 $ePf4 $ePd4 

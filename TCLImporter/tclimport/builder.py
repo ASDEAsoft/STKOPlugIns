@@ -465,6 +465,8 @@ def _build_cae_pprop_uniaxial(doc, callbacks):
 			if mmax is not None:
 				xobj.getAttribute('-max').boolean = True
 				xobj.getAttribute('maxStrain').real = mmax
+		elif mat.name == 'Series':
+			xobj.getAttribute('tag').indexVector = mat.params
 		elif mat.name == 'Pinching4':
 			eP = mat.params[0]
 			eN = mat.params[1]
