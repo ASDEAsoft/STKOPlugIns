@@ -416,6 +416,28 @@ def _build_cae_pprop_uniaxial(doc, callbacks):
 			xobj.getAttribute('R0').real = mat.params[3]
 			xobj.getAttribute('CR1').real = mat.params[4]
 			xobj.getAttribute('CR2').real = mat.params[5]
+		elif mat.name == 'Hysteretic':
+			# (18) $matTag $s1p $e1p $s2p $e2p <$s3p $e3p> $s1n $e1n $s2n $e2n <$s3n $e3n> $pinchX $pinchY $damage1 $damage2 <$beta>
+			# (17) $matTag $s1p $e1p $s2p $e2p <$s3p $e3p> $s1n $e1n $s2n $e2n <$s3n $e3n> $pinchX $pinchY $damage1 $damage2
+			# (13) $matTag $s1p $e1p $s2p $e2p $s1n $e1n $s2n $e2n $pinchX $pinchY $damage1 $damage2
+			n = len(mat.params)
+			if n == 12:
+				par_names = ('s1p', 'e1p', 's2p', 'e2p', 's1n', 'e1n', 's2n', 'e2n', 'pinchx', 'pinchy', 'damage1', 'damage2')
+			elif n == 16:
+				par_names = ('s1p', 'e1p', 's2p', 'e2p', 's3p', 'e3p', 's1n', 'e1n', 's2n', 'e2n', 's3n', 'e3n', 'pinchx', 'pinchy', 'damage1', 'damage2')
+				xobj.getAttribute('Optional').boolean = True
+			elif n == 17:
+				par_names = ('s1p', 'e1p', 's2p', 'e2p', 's3p', 'e3p', 's1n', 'e1n', 's2n', 'e2n', 's3n', 'e3n', 'pinchx', 'pinchy', 'damage1', 'damage2', 'beta')
+				xobj.getAttribute('Optional').boolean = True
+				xobj.getAttribute('use_beta').boolean = True
+			else:
+				raise Exception('Hysteretic format not supported')
+			for par, val in zip(par_names, mat.params):
+				atr = xobj.getAttribute(par)
+				if atr.type == MpcAttributeType.Real:
+					atr.real = val
+				else:
+					atr.quantityScalar.value = val
 		elif mat.name == 'MinMax':
 			xobj.getAttribute('otherTag').index = mat.params[0]
 			mmin = mat.params[1]
