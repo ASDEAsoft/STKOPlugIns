@@ -394,7 +394,7 @@ def _build_cae_pprop_uniaxial(doc, callbacks):
 	for id, mat in doc.materials_1d.items():
 		meta = callbacks.getMetaPhysicalProperty('materials.uniaxial.{}'.format(mat.name))
 		xobj = MpcXObject.createInstanceOf(meta)
-		if mat.name == 'Elastic':
+		if mat.name == 'Elastic' or mat.name == 'ENT':
 			xobj.getAttribute('E').quantityScalar.value = mat.params[0]
 		elif mat.name == 'Concrete01':
 			xobj.getAttribute('fpc').quantityScalar.value = mat.params[0]

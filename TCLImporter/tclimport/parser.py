@@ -368,7 +368,7 @@ def _parse_material_1d(doc, words):
 	name = words[1]
 	id = int(words[2])
 	n = len(words)
-	if name == 'Elastic':
+	if name == 'Elastic' or name == 'ENT':
 		# $E
 		params = [float(words[3])]
 	elif name == 'Concrete01':
