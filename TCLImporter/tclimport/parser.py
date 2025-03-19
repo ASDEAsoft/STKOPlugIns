@@ -612,8 +612,12 @@ def _renumber_props(doc, stage = 1):
 	# 1 - renumber uniaxial materials
 	aux = dict(doc.materials_1d)
 	doc.materials_1d = {}
+	material_1d_map = {} # old to new id map (used for mat referencing mat)
 	for old_id, imat in aux.items():
 		if imat.id != new_id:
+			# map old to new
+			material_1d_map[old_id] = new_id
+			# change id
 			imat.id = new_id
 			# change entities referencing this mat 1d (they can be:
 			# fiber sections, aggregators, zero length elements (links), or WALLS)
@@ -643,11 +647,13 @@ def _renumber_props(doc, stage = 1):
 								mats[i] = new_id
 					if ele.params[6] == old_id: # Shear
 						ele.params[6] = new_id
-					
 		# add it back
 		doc.materials_1d[imat.id] = imat
 		# increment
 		new_id += 1
+	#
+	# 1.1 - update materials referencing other materials!
+	# todo
 	#
 	# 2 - renumber fiber sections
 	if stage==1:
