@@ -676,7 +676,17 @@ def _renumber_props(doc, stage = 1):
 		new_id += 1
 	#
 	# 1.1 - update materials referencing other materials!
-	# todo
+	for _, imat in doc.materials_1d.items():
+		if imat.name == 'MinMax':
+			other_id = imat.params[0]
+			other_id_mod = material_1d_map.get(other_id, None)
+			if other_id_mod is not None:
+				imat.params[0] = other_id_mod
+		elif imat.name == 'Series':
+			for other_loc, other_id in enumerate(imat.params):
+				other_id_mod = material_1d_map.get(other_id, None)
+				if other_id_mod is not None:
+					imat.params[other_loc] = other_id_mod
 	#
 	# 2 - renumber fiber sections
 	if stage==1:
