@@ -385,6 +385,20 @@ def _parse_material_1d(doc, words):
 		# (17) $matTag $s1p $e1p $s2p $e2p <$s3p $e3p> $s1n $e1n $s2n $e2n <$s3n $e3n> $pinchX $pinchY $damage1 $damage2
 		# (13) $matTag $s1p $e1p $s2p $e2p $s1n $e1n $s2n $e2n $pinchX $pinchY $damage1 $damage2
 		params = [float(words[i]) for i in range(3, n)]
+	elif name == 'HystereticSM':
+		# support only the backward compatible version
+		nlast = 0
+		for i in reversed(range(3, n)): # use reverse to get the last negative value
+			value = float(words[i])
+			if value < 0.0:
+				nlast = i
+				break
+		nextra = n-nlast+1
+		nvals = int((nlast-3+1)/2)
+		ppos = [float(words[i]) for i in range(3, 3+nvals)]
+		pneg = [float(words[i]) for i in range(3+nvals, 3+nvals*2)]
+		pmis = [float(words[i]) for i in range(nlast+1, n)]
+		params = [ppos, pneg, pmis]
 	elif name == 'MinMax':
 		# $otherTag <-min $minStrain> <-max $maxStrain>
 		other = int(words[3])

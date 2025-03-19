@@ -438,6 +438,23 @@ def _build_cae_pprop_uniaxial(doc, callbacks):
 					atr.real = val
 				else:
 					atr.quantityScalar.value = val
+		elif mat.name == 'HystereticSM':
+			# support only the backward compatible version
+			ppos, pneg, pmis = mat.params
+			xobj.getAttribute('ep').quantityVector.value = ppos[1::2]
+			xobj.getAttribute('sp').quantityVector.value = ppos[::2]
+			xobj.getAttribute('-negEnv').boolean = True
+			xobj.getAttribute('en').quantityVector.value = pneg[1::2]
+			xobj.getAttribute('sn').quantityVector.value = pneg[::2]
+			xobj.getAttribute('-pinch').boolean = True
+			for i, p in enumerate(('pinchX', 'pinchY')):
+				xobj.getAttribute(p).real = pmis[i]
+			xobj.getAttribute('-damage').boolean = True
+			for i, p in enumerate(('damage1', 'damage2')):
+				xobj.getAttribute(p).real = pmis[i+2]
+			if len(pmis) > 4:
+				xobj.getAttribute('-beta').boolean = True
+				xobj.getAttribute('beta').real = pmis[4]
 		elif mat.name == 'MinMax':
 			xobj.getAttribute('otherTag').index = mat.params[0]
 			mmin = mat.params[1]
