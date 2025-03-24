@@ -15,6 +15,8 @@ class tcldoc:
 		self.nodes = {}
 		# limit curves
 		self.limit_curves = {}
+		# friction models
+		self.friction_models = {}
 		# geom trans
 		self.geom_trans = {}
 		# elements
@@ -56,6 +58,7 @@ class tcldoc:
 			'TCL DOC {{\n'
 			'\tNODES {{\n{}\n\t}}\n'
 			'\tLIMIT_CURVES {{\n{}\n\t}}\n'
+			'\tFRICTION_MODELS {{\n{}\n\t}}\n'
 			'\tGEOM_TRANS {{\n{}\n\t}}\n'
 			'\tELEMENTS {{\n{}\n\t}}\n'
 			'\tLINKS {{\n{}\n\t}}\n'
@@ -73,6 +76,7 @@ class tcldoc:
 			).format(
 				'\n'.join(['\t\t{}'.format(i) for i in self.nodes.values()]),
 				'\n'.join(['\t\t{}'.format(i) for i in self.limit_curves.values()]),
+				'\n'.join(['\t\t{}'.format(i) for i in self.friction_models.values()]),
 				'\n'.join(['\t\t{}'.format(i) for i in self.geom_trans.values()]),
 				'\n'.join(['\t\t{}'.format(i) for i in self.elements.values()]),
 				'\n'.join(['\t\t{}'.format(i) for i in self.links.values()]),

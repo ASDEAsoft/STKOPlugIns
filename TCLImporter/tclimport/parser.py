@@ -95,6 +95,22 @@ def _parse_limit_curve(doc, words):
 		print(words)
 		raise
 
+# parse friction models
+def _parse_friction_model(doc, words):
+	n = len(words)
+	name = words[1]
+	id = int(words[2])
+	if name == 'VelDepMultiLinear':
+		vel_loc = words.index('-vel')+1
+		frn_loc = words.index('-frn')+1
+		num = (n-3-2)//2
+		vel = [float(words[i]) for i in range(vel_loc, vel_loc+num)]
+		frn = [float(words[i]) for i in range(frn_loc, frn_loc+num)]
+		params = [vel, frn]
+	else:
+		params = [float(words[i]) for i in range(3, n)]
+	doc.friction_models[id] = friction_model_t(id, name, params)
+
 # parse an element
 def _parse_element(doc, words):
 	n = len(words)
@@ -209,6 +225,13 @@ def _parse_element(doc, words):
 				ori = [1.0, 0.0, 0.0,   0.0, 1.0, 0.0]
 			do_rayleigh = ('-doRayleigh' in words)
 			params = [sec, do_rayleigh, ori]
+		elif eltype == 'TripleFrictionPendulum':
+			fric_models = [int(words[i+pos]) for i in range(3)]
+			pos += 3
+			mats = [int(words[i+pos]) for i in range(4)]
+			pos += 4
+			dpar = [float(words[i+pos]) for i in range(11)]
+			params = [fric_models, mats, dpar]
 		elif eltype == 'twoNodeLink':
 			mats = []
 			dirs = []
@@ -628,6 +651,25 @@ def _renumber_props(doc, stage = 1):
 		doc.limit_curves[icurve.id] = icurve
 		# increment
 		new_id += 1
+	#
+	# renumber frictionModel
+	aux = dict(doc.friction_models)
+	doc.friction_models = {}
+	for old_id, imodel in aux.items():
+		if imodel.id != new_id:
+			imodel.id = new_id
+			# change entities referencing this friction model
+			# (they can be: link of type (TripleFrictionPendulum))
+			for _, ele in doc.links.items():
+				if ele.name == 'TripleFrictionPendulum':
+					fric_models = ele.params[0]
+					for i in range(len(fric_models)):
+						if fric_models[i] == old_id:
+							fric_models[i] = new_id
+		# add it back
+		doc.friction_models[imodel.id] = imodel
+		# increment
+		new_id += 1
 	
 	# renumber physical properties
 	new_id = 1
@@ -659,6 +701,11 @@ def _renumber_props(doc, stage = 1):
 			for _, ele in doc.links.items():
 				if ele.name == 'zeroLength':
 					mats = ele.params[0]
+					for i in range(len(mats)):
+						if mats[i] == old_id:
+							mats[i] = new_id
+				elif ele.name == 'TripleFrictionPendulum':
+					mats = ele.params[1]
 					for i in range(len(mats)):
 						if mats[i] == old_id:
 							mats[i] = new_id
@@ -1017,6 +1064,9 @@ def _process_axes(doc):
 	key_global = vxvy_t((1.0,0.0,0.0), (0.0,1.0,0.0))
 	# process all links
 	for ele_id, ele in doc.links.items():
+		# skip TFP
+		if ele.name == 'TripleFrictionPendulum':
+			continue
 		ori = ele.params[2]
 		vx = (ori[0], ori[1], ori[2])
 		vy = (ori[3], ori[4], ori[5])
@@ -1043,18 +1093,20 @@ def _process_axes(doc):
 def _process_link_props(doc):
 	new_id = _parser_utils.prop_offset*6 + 1
 	# map key = tuple(mats, dirs, trans_id) to a link_mat
-	aux = {}
+	aux_zl = {}
+	# map key = tuple(mats) to a TFP material
+	aux_tfp = {}
 	for _, ele in doc.links.items():
 		if ele.name == 'zeroLength' or ele.name == 'twoNodeLink':
 			mats = ele.params[0]
 			dirs = ele.params[1]
 			trans_id = ele.params[2]
 			key = (tuple(mats), tuple(dirs), trans_id)
-			if key in aux:
-				pid = aux[key]
+			if key in aux_zl:
+				pid = aux_zl[key]
 			else:
 				p = tclimport.tclobjects.link_material_t(new_id, mats[:], dirs[:])
-				aux[new_id] = p
+				aux_zl[new_id] = p
 				pid = new_id
 				new_id += 1
 			if ele.name == 'twoNodeLink':
@@ -1065,8 +1117,22 @@ def _process_link_props(doc):
 		elif ele.name == 'zeroLengthSection':
 			# make it compatible
 			ele.params = [ele.params[0], ele.params[2]]
+		elif ele.name == 'TripleFrictionPendulum':
+			mats = ele.params[1]
+			key = tuple(mats)
+			if key in aux_tfp:
+				pid = aux_tfp[key]
+			else:
+				p = tclimport.tclobjects.link_material_t(new_id, mats[:], list(range(1, len(mats)+1)))
+				p.type = tclimport.tclobjects.link_material_t.TFP
+				aux_tfp[new_id] = p
+				pid = new_id
+				new_id += 1
+			ele.params = [pid, ele.params[0], ele.params[2]]
 	# add to document
-	for id, p in aux.items():
+	for id, p in aux_zl.items():
+		doc.link_materials[id] = p
+	for id, p in aux_tfp.items():
 		doc.link_materials[id] = p
 
 # parse patterns
@@ -1122,6 +1188,8 @@ def parse_tcl(doc, filecontents):
 			_parse_geom_trans(doc, words)
 		elif w0 == 'limitCurve':
 			_parse_limit_curve(doc, words)
+		elif w0 == 'frictionModel':
+			_parse_friction_model(doc, words)
 		elif w0 == 'uniaxialMaterial':
 			_parse_material_1d(doc, words)
 		elif w0 == 'section':

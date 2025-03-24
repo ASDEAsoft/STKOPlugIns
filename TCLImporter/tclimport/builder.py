@@ -298,11 +298,41 @@ def _build_cae_model(doc, callbacks):
 	# done
 	return (vertex_map, edge_map)
 
-
 # build cae: definitions
 def _build_cae_definitions(doc, callbacks, vertex_map):
 	
 	cae_doc = App.caeDocument()
+	
+	# friction models
+	for id, imodel in doc.friction_models.items():
+		meta = callbacks.getMetaDefinition('frictionModel.{}'.format(imodel.name))
+		xobj = MpcXObject.createInstanceOf(meta)
+		if imodel.name == 'VelDepMultiLinear':
+			xobj.getAttribute('velocityPoints').quantityVector.value = imodel.params[0]
+			xobj.getAttribute('frictionPoints').quantityVector.value = imodel.params[1]
+		else:
+			if imodel.name == 'Coulomb':
+				pa = ('mu',)
+			elif imodel.name == 'VelDependent':
+				pa = ('muSlow', 'muFast', 'transRate')
+			elif imodel.name == 'VelNormalFrcDep':
+				pa = ('aSlow', 'nSlow', 'aFast', 'nFast', 'alpha0', 'alpha1', 'alpha2', 'maxMuFact')
+			elif imodel.name == 'VelPressureDep':
+				pa = ('muSlow', 'muFast0', 'A', 'deltaMu', 'alpha', 'transRate')
+			for ipar, ival in zip(pa, imodel.params):
+				attr = xobj.getAttribute(ipar)
+				if attr.type == MpcAttributeType.Real:
+					attr.real = ival
+				elif attr.type == MpcAttributeType.QuantityScalar:
+					attr.quantityScalar.value = ival
+		defi = MpcDefinition()
+		defi.id = id
+		defi.name = '{}_{}'.format(imodel.name, imodel.original_id)
+		defi.XObject = xobj
+		callbacks.addDefinition(defi)
+		defi.commitXObjectChanges()
+		
+	# limit curves
 	
 	def make_sset_node(node_id, curve_id, name):
 		sset_id = cae_doc.selectionSets.getlastkey(0) + 1
@@ -367,7 +397,6 @@ def _build_cae_definitions(doc, callbacks, vertex_map):
 		defi.XObject = xobj
 		callbacks.addDefinition(defi)
 		defi.commitXObjectChanges()
-
 
 # build cae: local axes
 def _build_cae_locax(doc, callbacks):
@@ -692,32 +721,44 @@ def _build_cae_pprop_section(doc, callbacks):
 def _build_cae_pprop_link(doc, callbacks):
 	meta_zl = callbacks.getMetaPhysicalProperty('special_purpose.zeroLengthMaterial')
 	meta_2l = callbacks.getMetaPhysicalProperty('special_purpose.twoNodeLinkMaterial')
+	meta_tfp = callbacks.getMetaPhysicalProperty('special_purpose.TripleFrictionPendulumMaterial')
 	for id, prop in doc.link_materials.items():
 		if prop.type == tclimport.tclobjects.link_material_t.LINK:
 			xobj = MpcXObject.createInstanceOf(meta_2l)
-		else:
+		elif prop.type == tclimport.tclobjects.link_material_t.ZLEN:
 			xobj = MpcXObject.createInstanceOf(meta_zl)
-		xobj.getAttribute('Dimension').string = '3D'
-		xobj.getAttribute('2D').boolean = False
-		xobj.getAttribute('3D').boolean = True
-		xobj.getAttribute('ModelType').string = 'U-R (Displacement+Rotation)'
-		xobj.getAttribute('U (Displacement)').boolean = False
-		xobj.getAttribute('U-R (Displacement+Rotation)').boolean = True
-		for i in range(len(prop.mats)):
-			imat = prop.mats[i]
-			idir = prop.dirs[i]
-			if idir == 3:
-				xobj.getAttribute('matTag{}/3D'.format(idir)).index = imat
-				xobj.getAttribute('dir{}/3D'.format(idir)).boolean = True
-			else:
-				xobj.getAttribute('matTag{}'.format(idir)).index = imat
-				xobj.getAttribute('dir{}'.format(idir)).boolean = True
-		prop = MpcProperty()
-		prop.id = id
-		prop.name = 'Link_MaterialType_{}'.format(id)
-		prop.XObject = xobj
-		callbacks.addPhysicalProperty(prop)
-		prop.commitXObjectChanges()
+		elif prop.type == tclimport.tclobjects.link_material_t.TFP:
+			xobj = MpcXObject.createInstanceOf(meta_tfp)
+		else:
+			raise Exception('Link property {} is invalid'.format(prop.type))
+		if prop.type == tclimport.tclobjects.link_material_t.TFP:
+			for pname, pval in zip(('vertMatTag', 'rotZMatTag', 'rotXMatTag', 'rotYMatTag'), prop.mats):
+				xobj.getAttribute(pname).index = pval
+		else:
+			xobj.getAttribute('Dimension').string = '3D'
+			xobj.getAttribute('2D').boolean = False
+			xobj.getAttribute('3D').boolean = True
+			xobj.getAttribute('ModelType').string = 'U-R (Displacement+Rotation)'
+			xobj.getAttribute('U (Displacement)').boolean = False
+			xobj.getAttribute('U-R (Displacement+Rotation)').boolean = True
+			for i in range(len(prop.mats)):
+				imat = prop.mats[i]
+				idir = prop.dirs[i]
+				if idir == 3:
+					xobj.getAttribute('matTag{}/3D'.format(idir)).index = imat
+					xobj.getAttribute('dir{}/3D'.format(idir)).boolean = True
+				else:
+					xobj.getAttribute('matTag{}'.format(idir)).index = imat
+					xobj.getAttribute('dir{}'.format(idir)).boolean = True
+		new_prop = MpcProperty()
+		new_prop.id = id
+		if prop.type == tclimport.tclobjects.link_material_t.TFP:
+			new_prop.name = 'TFP_MaterialType_{}'.format(id)
+		else:
+			new_prop.name = 'Link_MaterialType_{}'.format(id)
+		new_prop.XObject = xobj
+		callbacks.addPhysicalProperty(new_prop)
+		new_prop.commitXObjectChanges()
 
 # build cae: physical properties
 def _build_cae_pprop(doc, callbacks):
@@ -856,9 +897,9 @@ def _build_cae_eprop(doc, callbacks):
 			items.append(ele.cae_source)
 	# links
 	if len(doc.links) > 0:
+		# zero length elements are the same...
 		prop_zl = None
 		prop_zs = None
-		prop_2l = None
 		for ele_id, ele in doc.links.items():
 			# check
 			if ele.name == 'zeroLength':
@@ -896,41 +937,55 @@ def _build_cae_eprop(doc, callbacks):
 				else:
 					prop = prop_zs
 			elif ele.name == 'twoNodeLink':
-				if prop_2l is None:
-					meta = callbacks.getMetaElementProperty('link_elements.twoNodeLink')
-					xobj = MpcXObject.createInstanceOf(meta)
-					xobj.getAttribute('Dimension').string = '3D'
-					xobj.getAttribute('2D').boolean = False
-					xobj.getAttribute('3D').boolean = True
-					xobj.getAttribute('ModelType').string = 'U-R (Displacement+Rotation)'
-					xobj.getAttribute('U (Displacement)').boolean = False
-					xobj.getAttribute('U-R (Displacement+Rotation)').boolean = True
-					lparams = ele.params[2]
-					if lparams[4]:
-						xobj.getAttribute('-orient').boolean = True
-					pDelta = lparams[0]
-					if pDelta:
-						xobj.getAttribute('-pDelta').boolean = True
-						xobj.getAttribute('Mratios').quantityVector.value = pDelta
-					shearDist = lparams[1]
-					if shearDist:
-						xobj.getAttribute('-shearDist').boolean = True
-						xobj.getAttribute('sDratios').quantityVector.value = shearDist
-					if lparams[2]:
-						xobj.getAttribute('-doRayleigh').boolean = True
-					if lparams[3]:
-						xobj.getAttribute('-mass').boolean = True
-						xobj.getAttribute('m').quantityScalar.value = lparams[3]
-					prop = MpcElementProperty()
-					prop.id = new_id
-					prop.name = 'LinkType_twoNodeLink'
-					prop.XObject = xobj
-					callbacks.addElementProperty(prop)
-					prop.commitXObjectChanges()
-					new_id += 1
-					prop_2l = prop
-				else:
-					prop = prop_2l
+				meta = callbacks.getMetaElementProperty('link_elements.twoNodeLink')
+				xobj = MpcXObject.createInstanceOf(meta)
+				xobj.getAttribute('Dimension').string = '3D'
+				xobj.getAttribute('2D').boolean = False
+				xobj.getAttribute('3D').boolean = True
+				xobj.getAttribute('ModelType').string = 'U-R (Displacement+Rotation)'
+				xobj.getAttribute('U (Displacement)').boolean = False
+				xobj.getAttribute('U-R (Displacement+Rotation)').boolean = True
+				lparams = ele.params[2]
+				if lparams[4]:
+					xobj.getAttribute('-orient').boolean = True
+				pDelta = lparams[0]
+				if pDelta:
+					xobj.getAttribute('-pDelta').boolean = True
+					xobj.getAttribute('Mratios').quantityVector.value = pDelta
+				shearDist = lparams[1]
+				if shearDist:
+					xobj.getAttribute('-shearDist').boolean = True
+					xobj.getAttribute('sDratios').quantityVector.value = shearDist
+				if lparams[2]:
+					xobj.getAttribute('-doRayleigh').boolean = True
+				if lparams[3]:
+					xobj.getAttribute('-mass').boolean = True
+					xobj.getAttribute('m').quantityScalar.value = lparams[3]
+				prop = MpcElementProperty()
+				prop.id = new_id
+				prop.name = 'LinkType_twoNodeLink'
+				prop.XObject = xobj
+				callbacks.addElementProperty(prop)
+				prop.commitXObjectChanges()
+				new_id += 1
+			elif ele.name == 'TripleFrictionPendulum':
+				meta = callbacks.getMetaElementProperty('bearing_elements.TripleFrictionPendulum')
+				xobj = MpcXObject.createInstanceOf(meta)
+				for pname, pval in zip(('frnTag1','frnTag2','frnTag3'), ele.params[1]):
+					xobj.getAttribute(pname).index = pval
+				for pname, pval in zip(('L1','L2','L3','d1','d2','d3','W','uy','kvt','minFv','tol'), ele.params[2]):
+					atr = xobj.getAttribute(pname)
+					if atr.type == MpcAttributeType.Real:
+						atr.real = pval
+					elif atr.type == MpcAttributeType.QuantityScalar:
+						atr.quantityScalar.value = pval
+				prop = MpcElementProperty()
+				prop.id = new_id
+				prop.name = 'LinkType_TripleFrictionPendulum_{}'.format(ele.id)
+				prop.XObject = xobj
+				callbacks.addElementProperty(prop)
+				prop.commitXObjectChanges()
+				new_id += 1
 			else:
 				continue
 			# assign

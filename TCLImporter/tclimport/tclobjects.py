@@ -8,7 +8,7 @@ class settings:
 	BEAMS_ELA = ['elasticBeamColumn', 'ElasticTimoshenkoBeam']
 	SHELLS = ['ShellDKGQ', 'ShellNLDKGQ', 'ShellMITC4', 'ASDShellQ4']
 	WALLS = ['MVLEM_3D']
-	LINKS = ['zeroLength', 'zeroLengthSection', 'twoNodeLink']
+	LINKS = ['zeroLength', 'zeroLengthSection', 'twoNodeLink', 'TripleFrictionPendulum']
 	LINKS_WITH_SEC = ['zeroLengthSection']
 
 # node
@@ -29,6 +29,16 @@ class limit_curve_t:
 		self.original_id = id
 	def __str__(self):
 		return '[{}] - {} ({})'.format(self.id, ' '.join(str(i) for i in self.params), self.original_id)
+
+# friction models
+class friction_model_t:
+	def __init__(self, id, name, params):
+		self.id = id
+		self.name = name
+		self.params = params
+		self.original_id = id
+	def __str__(self):
+		return '[{}] - {} {} ({})'.format(self.id, self.name, ' '.join(str(i) for i in self.params), self.original_id)
 
 # region
 class region_t:
@@ -257,6 +267,7 @@ class material_1d_t:
 class link_material_t:
 	ZLEN = 1
 	LINK = 2
+	TFP  = 3
 	def __init__(self, id, mats, dirs):
 		self.id = id
 		self.mats = mats
