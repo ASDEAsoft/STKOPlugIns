@@ -373,27 +373,40 @@ def _build_cae_definitions(doc, callbacks, vertex_map):
 		callbacks.addSelectionSet(sset)
 		return sset_id
 	
-	meta = callbacks.getMetaDefinition('limitCurves.Rotation')
+	curv_metas = {
+		'Rotation': callbacks.getMetaDefinition('limitCurves.Rotation'),
+		'RotationStatic': callbacks.getMetaDefinition('limitCurves.RotationStatic')
+		}
 	for _, icurve in doc.limit_curves.items():
 		defi = MpcDefinition()
 		defi.name = 'LimitCurve Rotation ({})'.format(icurve.original_id)
 		defi.id = icurve.id
+		meta = curv_metas[icurve.name]
 		xobj = MpcXObject.createInstanceOf(meta)
+		# common
 		xobj.getAttribute('eleTag').index = make_sset_elem(icurve.params[0], icurve.original_id, 'eleTag')
 		xobj.getAttribute('dofl').integer = icurve.params[1]
 		xobj.getAttribute('dofv').integer = icurve.params[2]
 		xobj.getAttribute('iNodeTag').index = make_sset_node(icurve.params[3], icurve.original_id, 'iNodeTag')
 		xobj.getAttribute('jNodeTag').index = make_sset_node(icurve.params[4], icurve.original_id, 'jNodeTag')
-		xobj.getAttribute('fpc').quantityScalar.value = icurve.params[5]
-		xobj.getAttribute('fyt').quantityScalar.value = icurve.params[6]
-		xobj.getAttribute('Ag').quantityScalar.value = icurve.params[7]
-		xobj.getAttribute('rhot').real = icurve.params[8]
-		xobj.getAttribute('thetay').real = icurve.params[9]
-		xobj.getAttribute('VColOE').quantityScalar.value = icurve.params[10]
-		xobj.getAttribute('Kunload').quantityScalar.value = icurve.params[11]
-		if icurve.params[12]:
-			xobj.getAttribute('-VyE').boolean = True
-			xobj.getAttribute('VyE').quantityScalar.value = icurve.params[12]
+		# mandatory
+		if icurve.name == 'Rotation':
+			xobj.getAttribute('fpc').quantityScalar.value = icurve.params[5]
+			xobj.getAttribute('fyt').quantityScalar.value = icurve.params[6]
+			xobj.getAttribute('Ag').quantityScalar.value = icurve.params[7]
+			xobj.getAttribute('rhot').real = icurve.params[8]
+			xobj.getAttribute('thetay').real = icurve.params[9]
+			xobj.getAttribute('VColOE').quantityScalar.value = icurve.params[10]
+			xobj.getAttribute('Kunload').quantityScalar.value = icurve.params[11]
+			if icurve.params[12]:
+				xobj.getAttribute('-VyE').boolean = True
+				xobj.getAttribute('VyE').quantityScalar.value = icurve.params[12]
+		elif icurve.name == 'RotationStatic':
+			xobj.getAttribute('thetay').real = icurve.params[5]
+			xobj.getAttribute('a').real = icurve.params[6]
+			xobj.getAttribute('b').real = icurve.params[7]
+		else:
+			raise Exception('Unsupported curve type {}'.format(icurve.name))
 		defi.XObject = xobj
 		callbacks.addDefinition(defi)
 		defi.commitXObjectChanges()

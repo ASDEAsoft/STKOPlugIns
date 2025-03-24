@@ -75,25 +75,39 @@ def _parse_mass(doc, words):
 # parse a limit curve
 def _parse_limit_curve(doc, words):
 	n = len(words)
-	if (n == 15 or n == 17) and (words[1] == 'Rotation'):
-		id = int(words[2])
-		pos = 3
-		params = []
-		for i in range(5):
-			params.append(int(words[pos]))
-			pos += 1
-		for i in range(7):
-			params.append(float(words[pos]))
-			pos += 1
-		if n == 17:
-			params.append(float(words[16]))
+	name = words[1]
+	if name == 'Rotation':
+		if (n == 15 or n == 17):
+			id = int(words[2])
+			pos = 3
+			params = []
+			for i in range(5):
+				params.append(int(words[pos]))
+				pos += 1
+			for i in range(7):
+				params.append(float(words[pos]))
+				pos += 1
+			if n == 17:
+				params.append(float(words[16]))
+			else:
+				params.append(None)
+			doc.limit_curves[id] = limit_curve_t(id, name, params)
 		else:
-			params.append(None)
-	try:
-		doc.limit_curves[id] = limit_curve_t(id, params)
-	except:
-		print(words)
-		raise
+			raise Exception('Wrong number of parameters for limitCurve Rotation')
+	elif name == 'RotationStatic':
+		if n == 11:
+			id = int(words[2])
+			pos = 3
+			params = []
+			for i in range(5):
+				params.append(int(words[pos]))
+				pos += 1
+			for i in range(3):
+				params.append(float(words[pos]))
+				pos += 1
+			doc.limit_curves[id] = limit_curve_t(id, name, params)
+		else:
+			raise Exception('Wrong number of parameters for limitCurve RotationStatic')
 
 # parse friction models
 def _parse_friction_model(doc, words):
@@ -318,15 +332,32 @@ def _parse_fiber_sec(doc, words):
 	f.gj = gj
 	for w in words[5]:
 		if w[0] == 'patch':
-			f.patches.append(
-				fiber_patch_t(
-					int(w[2]), int(w[3]), int(w[4]),
-					(float(w[5]), float(w[6])),
-					(float(w[7]), float(w[8])),
-					(float(w[9]), float(w[10])),
-					(float(w[11]), float(w[12]))
+			if w[1] == 'quad':
+				f.patches.append(
+					fiber_patch_t(
+						int(w[2]), int(w[3]), int(w[4]),
+						(float(w[5]), float(w[6])),
+						(float(w[7]), float(w[8])),
+						(float(w[9]), float(w[10])),
+						(float(w[11]), float(w[12]))
+						)
 					)
-				)
+			elif w[1] == 'rect':
+				y1 = float(w[5])
+				z1 = float(w[6])
+				y2 = float(w[7])
+				z2 = float(w[8])
+				f.patches.append(
+					fiber_patch_t(
+						int(w[2]), int(w[3]), int(w[4]),
+						(y1, z1),
+						(y2, z1),
+						(y2, z2),
+						(y1, z2)
+						)
+					)
+			else:
+				raise Exception('Path type {} not supported'.format(words[1]))
 		elif w[0] == 'layer':
 			f.layers.append(
 				fiber_layer_t(

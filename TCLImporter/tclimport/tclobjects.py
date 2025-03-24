@@ -23,12 +23,13 @@ class node_t:
 
 # limitCurve
 class limit_curve_t:
-	def __init__(self, id, params):
+	def __init__(self, id, name, params):
 		self.id = id
+		self.name = name
 		self.params = params
 		self.original_id = id
 	def __str__(self):
-		return '[{}] - {} ({})'.format(self.id, ' '.join(str(i) for i in self.params), self.original_id)
+		return '[{}] - {} {} ({})'.format(self.id, self.name, ' '.join(str(i) for i in self.params), self.original_id)
 
 # friction models
 class friction_model_t:
