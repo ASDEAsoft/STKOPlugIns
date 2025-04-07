@@ -24,7 +24,6 @@ class parser:
 						value.append(line)
 		# parse
 		self._parse()
-		print(self.doc)
 	
 	def _parse(self):
 		self._parse_nodes()
