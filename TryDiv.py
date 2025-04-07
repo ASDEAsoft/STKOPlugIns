@@ -32,17 +32,6 @@ for i in range(len(ele.nodes)):
 	ir = field[row]
 	f.append(Math.vec3(ir[0], ir[1], 0.0))
 	m.append(Math.vec3(0.0, 0.0, ir[2]))
-F = Math.vec3(0.0,0.0,0.0)
-M = Math.vec3(0.0,0.0,0.0)
-c = ele.nodes[0].position + u[ele.nodes[0].id]
-for iF, iM, node in zip(f, m, ele.nodes):
-	F += iF
-	M += iM
-	d = node.position+u[node.id] - c
-	iFM = d.cross(iF)
-	M += iFM
-print(*F)
-print(*M)
 
 print("===========================")
 def _pv(x):

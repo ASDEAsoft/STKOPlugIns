@@ -1,3 +1,9 @@
+'''
+@ todo:
+now we avg the stresses.
+in case of more gauss points we can extrapolate to nodes ans interpolate to cut integration points?
+'''
+
 import os
 import math
 import time
@@ -738,6 +744,11 @@ class _CutElement:
 			self._processPolygon()
 			if math.sqrt(self.csize) > 10.0*T: self.valid = True # skip small cuts
 	def _getTractionSolid(self, results):
+		'''
+		if extrapolated to nodes: interpolate at point cuts, 
+		sum F at element cut centroid
+		sum M local about element cut centroid
+		'''
 		if results.tensor is None:
 			return (None, None)
 		s = None
