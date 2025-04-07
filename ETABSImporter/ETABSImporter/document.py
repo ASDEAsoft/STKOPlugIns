@@ -5,23 +5,6 @@ from shapely.ops import split, unary_union, linemerge
 import numpy as np
 from PyMpc import *
 
-# the vertex class is used to store the coordinates of a point in 3D space
-class vertex:
-	def __init__(self, x:float, y:float, z:float):
-		self.x = x
-		self.y = y
-		self.z = z
-	def as_tuple(self):
-		return (self.x, self.y, self.z)
-	def as_np(self):
-		return np.array([self.x, self.y, self.z])
-	def as_vec3(self):
-		return Math.vec3(self.x, self.y, self.z)
-	def __str__(self):
-		return '({:8.3g}, {:8.3g},{:8.3g})'.format(self.x, self.y, self.z)
-	def __repr__(self):
-		return self.__str__()
-
 # The frame class is used to store the connectivity of a frame member
 class frame:
 	def __init__(self, nodes:List[int]):
@@ -50,7 +33,7 @@ class document:
 	# The document class is used to store the model data
 	def __init__(self):
 		# The vertices dictionary is used to store the coordinates of the points in 3D space
-		self.vertices : Dict[int, vertex] = {}
+		self.vertices : Dict[int, Math.vec3] = {}
 		# The frames dictionary is used to store the connectivity of the frame members
 		self.frames : Dict[int, frame] = {}
 		# The areas dictionary is used to store the connectivity of the slab members
@@ -62,7 +45,7 @@ class document:
 		f = StringIO()
 		f.write('Vertices\n')
 		for i,v in self.vertices.items():
-			f.write(f"{i:8} : {v}\n")
+			f.write(f"{i:8} : ({v.x:8.3g}, {v.y:8.3g},{v.z:8.3g}'\n")
 		f.write('Frames\n')
 		for i,v in self.frames.items():
 			f.write(f"{i:8} : {v}\n")

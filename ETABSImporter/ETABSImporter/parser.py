@@ -1,5 +1,6 @@
-from ETABSImporter.document import document, vertex, frame, area
+from ETABSImporter.document import document, frame, area
 from collections import defaultdict
+from PyMpc import *
 
 '''
 section modifiers parse + STKO
@@ -37,7 +38,7 @@ class parser:
 			x = float(words[1])
 			y = float(words[2])
 			z = float(words[3])
-			self.doc.vertices[id] = vertex(x,y,z)
+			self.doc.vertices[id] = Math.vec3(x,y,z)
 	
 	def _parse_frames(self):
 		for item in self.commands['* FRAMES_CONNECTIVITY']:
