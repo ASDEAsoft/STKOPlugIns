@@ -1,0 +1,10 @@
+{
+    "python.analysis.extraPaths": [
+        "C:/Develop/Utility/STKO-install/data/win64"
+    ],
+    "python.autoComplete.extraPaths": [
+        "C:/Develop/Utility/STKO-install/data/win64"
+    ],
+    "python.linting.enabled": true,
+    "python.linting.pylintEnabled": true
+}
