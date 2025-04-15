@@ -336,10 +336,10 @@ class pattern_t:
 		for i in range(6):
 			value[i] += load[i]
 	def add_ele_load(self, load, ele):
-		if load in self.ele_loads:
-			eles = self.ele_loads[load]
-		else:
+		eles = self.ele_loads.get(load, None)
+		if eles is None:
 			eles = []
+			self.ele_loads[load] = eles
 		eles.append(ele)
 	def finalize(self):
 		for node, load in self.__aux.items():

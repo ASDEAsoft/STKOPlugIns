@@ -1198,7 +1198,8 @@ def _build_cae_load(doc, callbacks, support):
 		meta = callbacks.getMetaAnalysisStep('Patterns.addPattern.loadPattern')
 		xobj = MpcXObject.createInstanceOf(meta)
 		xobj.getAttribute('tsTag').index = 1
-		indices = xobj.getAttribute('load').indexVector
+		load_indices = xobj.getAttribute('load').indexVector
+		ele_load_indices = xobj.getAttribute('eleLoad').indexVector
 		#
 		# build loads/couples in this pattern
 		aux_data = ( 
@@ -1220,6 +1221,8 @@ def _build_cae_load(doc, callbacks, support):
 					source = doc.nodes[node].cae_source
 					if len(source) != 3:
 						raise Exception('Load supported only on geometries')
+					if source[2] != MpcSubshapeType.Vertex:
+						raise Exception('Load supported only on vertices')
 					geom = source[0]
 					vertex = source[1]
 					if geom in gmap:
@@ -1237,7 +1240,51 @@ def _build_cae_load(doc, callbacks, support):
 				callbacks.addCondition(con)
 				con.commitXObjectChanges()
 				# add to pattern
-				indices.append(con.id)
+				load_indices.append(con.id)
+		#
+		# build eleLoads in this pattern
+		for ele_load, ele_ids in pat.ele_loads.items():
+			con = MpcCondition()
+			con.id = support.condition_id
+			support.condition_id += 1
+			con.name = 'Element Load {}'.format(ele_load)
+			meta = callbacks.getMetaCondition('Loads.eleLoad.eleLoad_beamUniform')
+			xobj_load = MpcXObject.createInstanceOf(meta)
+			xobj_load.getAttribute('Dimension').string = '3D'
+			xobj_load.getAttribute('2D').boolean = False
+			xobj_load.getAttribute('3D').boolean = True
+			xobj_load.getAttribute('use_Wx').boolean = True
+			xobj_load.getAttribute('Wx').real = ele_load[2] # Wx at last entry
+			xobj_load.getAttribute('Wy').real = ele_load[0] # Wy at first entry
+			xobj_load.getAttribute('Wz').real = ele_load[1] # Wz at second entry
+			con.XObject = xobj_load
+			# obtain MpcConditionIndexedSubSet (map elements to geometries)
+			gmap = {}
+			for ele_id in ele_ids:
+				ele = doc.elements[ele_id]
+				source = ele.cae_source
+				if len(source) != 3:
+					raise Exception('Load supported only on geometries')
+				if source[2] != MpcSubshapeType.Edge:
+					raise Exception('EleLoad supported only on edges')
+				geom = source[0]
+				edge = source[1]
+				if geom in gmap:
+					edges = gmap[geom]
+				else:
+					edges = []
+					gmap[geom] = edges
+				edges.append(edge)
+			for geom, edges in gmap.items():
+				sset = MpcConditionIndexedSubSet()
+				for i in edges:
+					sset.edges.append(i)
+				con.assignTo(geom, sset)
+			# done
+			callbacks.addCondition(con)
+			con.commitXObjectChanges()
+			# add to pattern
+			ele_load_indices.append(con.id)
 		#
 		# add pattern
 		step.XObject = xobj
