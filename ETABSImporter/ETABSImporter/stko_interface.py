@@ -22,6 +22,10 @@ class stko_interface:
     def new_geometry_id(self) -> int:
         return self.doc.geometries.getlastkey(0) + 1
 
+    # get the interaction id of the last interaction in the document + 1
+    def new_interaction_id(self) -> int:
+        return self.doc.interactions.getlastkey(0) + 1
+
     # adds a new geometry to the STKO document
     def add_geometry(self, geom : MpcGeometry):
         self.doc.addGeometry(geom)
@@ -29,7 +33,14 @@ class stko_interface:
         self.doc.dirty = True
         App.processEvents()
     
+    # adds a new interaction to the STKO document
+    def add_interaction(self, inter : MpcInteraction):
+        self.doc.addInteraction(inter)
+        self.doc.commitChanges()
+        self.doc.dirty = True
+        App.processEvents()
+
     # regenerate the document
     def regenerate(self):
-        App.runCommand('Regenerate')
+        App.runCommand('Regenerate', '2')
         App.processEvents()

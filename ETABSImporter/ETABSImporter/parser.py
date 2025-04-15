@@ -27,7 +27,6 @@ class parser:
                 else:
                     if value is not None:
                         value.append(line)
-
         # parse
         self._parse()
     

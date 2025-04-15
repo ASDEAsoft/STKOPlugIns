@@ -20,6 +20,12 @@ class _geometry:
         # The geometry type
         self.type : TopAbs_ShapeEnum = TopAbs_ShapeEnum.TopAbs_COMPOUND
 
+# maps an ETABS entity (vertex, frame, area) to a STKO geometry and subshape id
+class _geometry_map_item:
+    def __init__(self, geom_id:int, subshape_id:int):
+        self.geom_id = geom_id
+        self.subshape_id = subshape_id
+
 # this class is used to build the geometry of the model
 # it uses the ETABS document to build the STKO document
 class builder:
@@ -36,11 +42,15 @@ class builder:
         # the STKO document interface
         self.stko = stko
 
-        # the geometries
-        self._geoms : List[_geometry] = []
+        # the grouped geometries (key = id in STKO)
+        self._geoms : Dict[int, _geometry] = {}
+
+        # mapping of the ETABS entities to the STKO geometries
+        self._vertex_map : Dict[int, _geometry_map_item] = {}
+        self._frame_map : Dict[int, _geometry_map_item] = {} 
+        self._area_map : Dict[int, _geometry_map_item] = {}
 
         # process
-        # todo: merge coincident nodes in the ETABS model!
         try:
             self.stko.start()
             self._build_geometry_groups()
@@ -50,34 +60,31 @@ class builder:
         finally:
             self.stko.stop()
 
-    # build the graph of the model.
-    # the graph is used to find the connected components of the model.
-    def _build_geometry_groups(self):
+    # builds a graph of connected vertices
+    def _make_vertex_groups(self) -> List[List[int]]:
         # the number of vertices
         num_vertices = len(self.etabs_doc.vertices)
-        # create a mapping from the ETABS node id to a 0-based index for the graph
-        vertex_map = {}
-        for node_id in self.etabs_doc.vertices.keys():
-            vertex_map[node_id] = len(vertex_map)
         # create the graph and compute connected vertices
         the_graph = graph(num_vertices)
         def _add_ele_to_graph(ele):
             for i,j in itertools.combinations(ele.nodes, 2):
-                the_graph.add_edge(vertex_map[i], vertex_map[j])
+                the_graph.add_edge(i, j)
         for _, ele in self.etabs_doc.frames.items():
             _add_ele_to_graph(ele)
         for _, ele in self.etabs_doc.areas.items():
             _add_ele_to_graph(ele)
-        vertex_groups = the_graph.connected_components()
-        # now compute an inverse map to return the connected components in the original ETABS node id
-        inv_vertex_map = {j:i for i,j in vertex_map.items()}
-        # now convert the connected components to the original ETABS node id
-        for i in range(len(vertex_groups)):
-            vertex_groups[i] = [inv_vertex_map[j] for j in vertex_groups[i]]
+        # done
+        return the_graph.connected_components()
+
+    # build the graph of the model.
+    # the graph is used to find the connected components of the model.
+    def _build_geometry_groups(self):
+        next_geom_id = self.stko.new_geometry_id()
+        # vertex groups
+        vertex_groups = self._make_vertex_groups()
         # now group frames and areas with geometries.
         # note: if a group is made by just 1 vertex, make it in an external geometry
         geom_floating_nodes = _geometry()
-        self._geoms : List[_geometry] = []
         for group in vertex_groups:
             # if the group has only one vertex, make it in an external geometry
             if len(group) == 1:
@@ -85,6 +92,9 @@ class builder:
                 continue
             # create a new geometry for the group
             geom = _geometry()
+            geom.id = next_geom_id
+            next_geom_id += 1
+            # add the vertices to the geometry
             for node_id in group:
                 geom.vertices[node_id] = self.etabs_doc.vertices[node_id]
             # now add the frames and areas to the geometry
@@ -108,19 +118,17 @@ class builder:
                 geom.type = TopAbs_ShapeEnum.TopAbs_SHELL if len(geom.areas) > 1 else TopAbs_ShapeEnum.TopAbs_FACE
             else:
                 continue
-            self._geoms.append(geom)
+            self._geoms[geom.id] = geom
         # add the floating nodes to the external geometry
         if len(geom_floating_nodes.vertices) > 0:
+            geom_floating_nodes.id = next_geom_id
+            next_geom_id += 1
             geom_floating_nodes.type = TopAbs_ShapeEnum.TopAbs_COMPOUND if len(self._geoms) > 0 else TopAbs_ShapeEnum.TopAbs_VERTEX
-            self._geoms.append(geom_floating_nodes)
+            self._geoms[geom_floating_nodes.id] = geom_floating_nodes
     
     # adds geometries to STKO
     def _build_geometries(self):
-        geom_id = self.stko.new_geometry_id()
-        for geom in self._geoms:
-            # store the STKO id
-            geom.id = geom_id
-            geom_id += 1
+        for geom_id, geom in self._geoms.items():
             # build vertices:
             # map the ETABS node id to the STKO vertex object
             V : Dict[int, FxOccShape] = {}
@@ -173,21 +181,9 @@ class builder:
             elif geom.type == TopAbs_ShapeEnum.TopAbs_EDGE:
                 shape = list(EFloat.values())[0]
             elif geom.type == TopAbs_ShapeEnum.TopAbs_WIRE:
-                # order floating edges in a so that the i-th edge shares a node with a previous one
-                # EFloat_ordered = []
-                # EN_inv = {j:i for i,j in EN.items()} # key = edge_id (same in EFloat), value = tuple of vertices
-                # EVlist_source = [EN_inv[edge_id] for edge_id in EFloat.keys()]
-                # EVlist = [EVlist_source.pop(0)] # pop first element
-                # while EVlist_source:
-                #     for _loc, _evitem in enumerate(EVlist_source):
-                #         if any(_prev in _evitem for _prev in EVlist[-1]):
-                #             EVlist.append(EVlist_source.pop(_loc))
-                #             break
-                # shape = FxOccBuilder.makeWire(list(EFloat[EN[n1n2]] for n1n2 in EVlist))
-                wire_input = FxOccShapeVector()
-                for val in EFloat.values():
-                    wire_input.append(val)
-                shapes_in_wire = FxOccFactoryCurve.makeWire(wire_input)
+                shapes_in_wire = FxOccFactoryCurve.makeWire(list(EFloat.values()))
+                if len(shapes_in_wire) != 1:
+                    raise Exception('Wire creation failed. Found more than one shape.')
                 shape = shapes_in_wire[0]
             elif geom.type == TopAbs_ShapeEnum.TopAbs_FACE:
                 shape = list(F.values())[0]
@@ -199,12 +195,92 @@ class builder:
                     shape = FxOccBuilder.makeCompound(list(V.values()))
                 else:
                     # if we are here, it's a compound of edges and faces
-                    # join the values of E and F, concatenating the genetors
-                    shape = FxOccBuilder.makeCompound(list(itertools.chain(EFloat.values(), F.values())))
+                    # joint floating edges in 1 or multiple wires
+                    float_wires = FxOccFactoryCurve.makeWire(list(EFloat.values()))
+                    float_faces = FxOccFactorySurfaces.makeShell(list(F.values()), self.etabs_doc.tolerance, False, True)
+                    shape = FxOccBuilder.makeCompound(list(itertools.chain(float_wires, float_faces)))
             # create the STKO geometry
-            geom_name = f'Geometry_{geom_id}'
-            stko_geom = MpcGeometry(geom_id, geom_name, shape)
+            geom_name = f'Geometry_{geom.id}'
+            stko_geom = MpcGeometry(geom.id, geom_name, shape)
             self.stko.add_geometry(stko_geom)
-        # run a regenerate command
-        self.stko.regenerate()
-            
+            # map ETABS entities to STKO geometry ids
+            # for i, vertex in V.items():
+            #     for j in range(shape.getNumberOfSubshapes(MpcSubshapeType.Vertex)):
+            #         if vertex.isSame(shape.getSubshape(j, MpcSubshapeType.Vertex)):
+            #             self._vertex_map[i] = _geometry_map_item(geom.id, j)
+            #         # else:
+            #         #     raise Exception(f'Vertex {i} not found in geometry {geom.id}')
+            # for i, edge in E.items():
+            #     for j in range(shape.getNumberOfSubshapes(MpcSubshapeType.Edge)):
+            #         if edge.isSame(shape.getSubshape(j, MpcSubshapeType.Edge)):
+            #             self._frame_map[i] = _geometry_map_item(geom.id, j)
+            #         # else:
+            #         #     raise Exception(f'Edge {i} not found in geometry {geom.id}')
+            # for i, face in F.items():
+            #     for j in range(shape.getNumberOfSubshapes(MpcSubshapeType.Face)):
+            #         if face.isSame(shape.getSubshape(j, MpcSubshapeType.Face)):
+            #             self._area_map[i] = _geometry_map_item(geom.id, j)
+            #         # else:
+            #         #     raise Exception(f'Face {i} not found in geometry {geom.id}')
+            # print(f'SHAPE MAP of Geometry {geom.id}')
+            # print(f'   vertices {len(self._vertex_map)} of {len(V)}')
+            # print(f'   edges {len(self._frame_map)} of {len(E)}')
+            # print(f'   faces {len(self._area_map)} of {len(F)}')
+            self._make_map(stko_geom)
+
+    def _make_map(self, geom : MpcGeometry):
+        import time
+        time_start = time.time()
+        # map vertices
+        tol = self.etabs_doc.tolerance
+        def _vertex_key(v:Math.vec3) -> Tuple[int,int,int]:
+            return (int(v.x/tol), int(v.y/tol), int(v.z/tol))
+        unique_vertices : Dict[Tuple[int,int,int], int] = {}
+        for i in range(geom.shape.getNumberOfSubshapes(MpcSubshapeType.Vertex)):
+            key = _vertex_key(geom.shape.vertexPosition(i))
+            if key not in unique_vertices:
+                unique_vertices[key] = i
+        # map edges
+        def _edge_key(n1:int, n2:int) -> Tuple[int,int]:
+            return tuple(sorted((n1, n2)))
+        unique_edges : Dict[Tuple[int,int], int] = {}
+        for i in range(geom.shape.getNumberOfSubshapes(MpcSubshapeType.Edge)):
+            edge_vertices = geom.shape.getSubshapeChildren(i, MpcSubshapeType.Edge, MpcSubshapeType.Vertex)
+            p1 = geom.shape.vertexPosition(edge_vertices[0])
+            p2 = geom.shape.vertexPosition(edge_vertices[1])
+            key = _edge_key(unique_vertices[_vertex_key(p1)], unique_vertices[_vertex_key(p2)])
+            if key not in unique_edges:
+                unique_edges[key] = i
+        # map faces
+        def _face_key(ekeys : List[Tuple[int, int]]) -> List[Tuple[int,int]]:
+            return tuple(sorted(ekeys))
+        unique_faces : Dict[List[Tuple[int,int]], int] = {}
+        for i in range(geom.shape.getNumberOfSubshapes(MpcSubshapeType.Face)):
+            face_edges = geom.shape.getSubshapeChildren(i, MpcSubshapeType.Face, MpcSubshapeType.Edge)
+            ekeys : List[Tuple[int,int]] = []
+            for j in range(len(face_edges)):
+                edge_vertices = geom.shape.getSubshapeChildren(face_edges[j], MpcSubshapeType.Edge, MpcSubshapeType.Vertex)
+                p1 = geom.shape.vertexPosition(edge_vertices[0])
+                p2 = geom.shape.vertexPosition(edge_vertices[1])
+                ekeys.append(_edge_key(unique_vertices[_vertex_key(p1)], unique_vertices[_vertex_key(p2)]))
+            unique_faces[_face_key(ekeys)] = i
+        # now we can map the ETABS entities to the STKO geometry/sub-geometry ids
+        # using the ETABS entities in this geometry group
+        etabs_geom = self._geoms[geom.id]
+        # link the vertices to the STKO geometry
+        for i, v in etabs_geom.vertices.items():
+            key = _vertex_key(v)
+            subshape_id = unique_vertices.get(key, None)
+            if subshape_id is None:
+                raise Exception(f'Vertex {i} not found in geometry {geom.id}')
+            self._vertex_map[i] = _geometry_map_item(geom.id, subshape_id)
+        # done
+        time_end = time.time()
+        print(f'Mapping elapsed time : {time_end - time_start} seconds')
+
+        
+    # adds interactions to STKO
+    def _build_interactions(self):
+        # process diaphragms
+        for name, items in self.etabs_doc.diaphragms.items():
+            ...
