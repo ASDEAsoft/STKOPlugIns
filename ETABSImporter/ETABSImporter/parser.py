@@ -51,13 +51,17 @@ class parser:
         for item in self.commands['* FRAMES_CONNECTIVITY']:
             words = item.split(',')
             id = int(words[0])
-            self.doc.frames[id] = frame([int(words[i]) for i in range(1, 3)])
+            nodes = [int(words[i]) for i in range(1, 3)]
+            angle = float(words[-1])
+            self.doc.frames[id] = frame(nodes, angle)
     
     def _parse_areas(self):
         for item in self.commands['* AREAS_CONNECTIVITY']:
             words = item.split(',')
             id = int(words[0])
-            self.doc.areas[id] = area([int(words[i]) for i in range(1, 5)])
+            nodes = [int(words[i]) for i in range(1, 5)]
+            angle = float(words[-1])
+            self.doc.areas[id] = area(nodes, angle)
     
     def _parse_diaphragm(self):
         for item in self.commands['* JOINT_RIGID_DIAPHRAGMS']:

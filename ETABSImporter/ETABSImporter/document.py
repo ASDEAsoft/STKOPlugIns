@@ -1,29 +1,28 @@
 from typing import List, Dict, Tuple, DefaultDict
 from collections import defaultdict
-from shapely.geometry import Polygon, LineString, MultiLineString
-from shapely.ops import split, unary_union, linemerge
-import numpy as np
 from PyMpc import *
 
 # The frame class is used to store the connectivity of a frame member
 class frame:
-    def __init__(self, nodes:List[int]):
+    def __init__(self, nodes:List[int], angle:float=0.0):
         if len(nodes) != 2:
             raise ValueError('Frame must have exactly 2 nodes')
         self.nodes = nodes
+        self.angle = angle
     def __str__(self):
-        return '({:8},{:8})'.format(*self.nodes)
+        return '({:8},{:8}), A={:.3f}°'.format(*self.nodes, self.angle)
     def __repr__(self):
         return self.__str__()
 
 # The area class is used to store the connectivity of a slab member
 class area:
-    def __init__(self, nodes:List[int]):
+    def __init__(self, nodes:List[int], angle:float=0.0):
         if len(nodes) != 4:
             raise ValueError('Area must have exactly 4 nodes')
         self.nodes = nodes
+        self.angle = angle
     def __str__(self):
-        return '({:8},{:8},{:8},{:8})'.format(*self.nodes)
+        return '({:8},{:8},{:8},{:8}), A = {:.3f}°'.format(*self.nodes, self.angle)
     def __repr__(self):
         return self.__str__()
 
