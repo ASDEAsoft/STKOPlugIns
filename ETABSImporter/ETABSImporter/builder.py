@@ -22,9 +22,14 @@ class _geometry:
 
 # maps an ETABS entity (vertex, frame, area) to a STKO geometry and subshape id
 class _geometry_map_item:
-    def __init__(self, geom_id:int, subshape_id:int):
-        self.geom_id = geom_id
+    def __init__(self, geom:MpcGeometry, subshape_id:int):
+        self.geom = geom
         self.subshape_id = subshape_id
+
+# maps and ETABS entity (diaphragm) to a STKO interaction
+class _interaction_map_item:
+    def __init__(self, interaction:MpcInteraction):
+        self.interaction = interaction
 
 # this class is used to build the geometry of the model
 # it uses the ETABS document to build the STKO document
@@ -49,12 +54,14 @@ class builder:
         self._vertex_map : Dict[int, _geometry_map_item] = {}
         self._frame_map : Dict[int, _geometry_map_item] = {} 
         self._area_map : Dict[int, _geometry_map_item] = {}
+        self._diaphram_map : Dict[str, _interaction_map_item] = {}
 
         # process
         try:
             self.stko.start()
             self._build_geometry_groups()
             self._build_geometries()
+            self._build_interactions()
         except Exception as e:
             raise
         finally:
@@ -203,31 +210,9 @@ class builder:
             geom_name = f'Geometry_{geom.id}'
             stko_geom = MpcGeometry(geom.id, geom_name, shape)
             self.stko.add_geometry(stko_geom)
-            # map ETABS entities to STKO geometry ids
-            # for i, vertex in V.items():
-            #     for j in range(shape.getNumberOfSubshapes(MpcSubshapeType.Vertex)):
-            #         if vertex.isSame(shape.getSubshape(j, MpcSubshapeType.Vertex)):
-            #             self._vertex_map[i] = _geometry_map_item(geom.id, j)
-            #         # else:
-            #         #     raise Exception(f'Vertex {i} not found in geometry {geom.id}')
-            # for i, edge in E.items():
-            #     for j in range(shape.getNumberOfSubshapes(MpcSubshapeType.Edge)):
-            #         if edge.isSame(shape.getSubshape(j, MpcSubshapeType.Edge)):
-            #             self._frame_map[i] = _geometry_map_item(geom.id, j)
-            #         # else:
-            #         #     raise Exception(f'Edge {i} not found in geometry {geom.id}')
-            # for i, face in F.items():
-            #     for j in range(shape.getNumberOfSubshapes(MpcSubshapeType.Face)):
-            #         if face.isSame(shape.getSubshape(j, MpcSubshapeType.Face)):
-            #             self._area_map[i] = _geometry_map_item(geom.id, j)
-            #         # else:
-            #         #     raise Exception(f'Face {i} not found in geometry {geom.id}')
-            # print(f'SHAPE MAP of Geometry {geom.id}')
-            # print(f'   vertices {len(self._vertex_map)} of {len(V)}')
-            # print(f'   edges {len(self._frame_map)} of {len(E)}')
-            # print(f'   faces {len(self._area_map)} of {len(F)}')
             self._make_map(stko_geom)
 
+    # maps an ETABS _geometry to an STKO MpcGeometry
     def _make_map(self, geom : MpcGeometry):
         import time
         time_start = time.time()
@@ -273,14 +258,58 @@ class builder:
             subshape_id = unique_vertices.get(key, None)
             if subshape_id is None:
                 raise Exception(f'Vertex {i} not found in geometry {geom.id}')
-            self._vertex_map[i] = _geometry_map_item(geom.id, subshape_id)
-        # done
-        time_end = time.time()
-        print(f'Mapping elapsed time : {time_end - time_start} seconds')
-
+            self._vertex_map[i] = _geometry_map_item(geom, subshape_id)
+        # link the frames to the STKO geometry
+        for i, f in etabs_geom.frames.items():
+            # get the edge id from the map
+            edge_vertices = f.nodes
+            p1 = etabs_geom.vertices[edge_vertices[0]]
+            p2 = etabs_geom.vertices[edge_vertices[1]]
+            key = _edge_key(unique_vertices[_vertex_key(p1)], unique_vertices[_vertex_key(p2)])
+            subshape_id = unique_edges.get(key, None)
+            if subshape_id is None:
+                raise Exception(f'Frame {i} not found in geometry {geom.id}')
+            self._frame_map[i] = _geometry_map_item(geom, subshape_id)
+        # link the areas to the STKO geometry
+        for i, a in etabs_geom.areas.items():
+            # get the face id from the map
+            face_vertices = a.nodes
+            ekeys : List[Tuple[int,int]] = []
+            for j in range(len(face_vertices)):
+                n1 = a.nodes[j]
+                n2 = a.nodes[(j+1)%len(a.nodes)]
+                p1 = etabs_geom.vertices[n1]
+                p2 = etabs_geom.vertices[n2]
+                key = _edge_key(unique_vertices[_vertex_key(p1)], unique_vertices[_vertex_key(p2)])
+                ekeys.append(key)
+            subshape_id = unique_faces.get(_face_key(ekeys), None)
+            if subshape_id is None:
+                raise Exception(f'Area {i} not found in geometry {geom.id}')
+            self._area_map[i] = _geometry_map_item(geom, subshape_id)
         
     # adds interactions to STKO
     def _build_interactions(self):
+        next_id = self.stko.new_interaction_id()
         # process diaphragms
         for name, items in self.etabs_doc.diaphragms.items():
-            ...
+            # get data
+            retained_id = items[-1]
+            constrained_ids = items[:-1]
+            # make a new interaction
+            interaction = MpcInteraction(next_id, f'Diaphragm {name}')
+            next_id += 1
+            # retained item
+            retained_data = self._vertex_map.get(retained_id, None)
+            if retained_data is None:
+                raise Exception(f'Diagram {name} retained vertex {retained_id} not found in geometry')
+            interaction.items.masters.append(MpcInteractionItem(retained_data.geom, MpcSubshapeType.Vertex, retained_data.subshape_id))
+            # constrained items
+            for i in constrained_ids:
+                constrained_data = self._vertex_map.get(i, None)
+                if constrained_data is None:
+                    raise Exception(f'Diagram {name} constrained vertex {i} not found in geometry')
+                interaction.items.slaves.append(MpcInteractionItem(constrained_data.geom, MpcSubshapeType.Vertex, constrained_data.subshape_id))
+            # add the interaction to the document
+            self.stko.add_interaction(interaction)
+            # map the diaphragm to the interaction
+            self._diaphram_map[name] = _interaction_map_item(interaction)
