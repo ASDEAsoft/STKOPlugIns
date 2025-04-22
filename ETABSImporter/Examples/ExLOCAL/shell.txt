@@ -1,0 +1,30 @@
+* ETABS_VERSION
+22.5.1
+
+* MODEL_NAME
+C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\40_Story_Rc_Core_Wall_Bldng_e4.3.EDB
+
+* UNITS
+kip, in, F
+
+* JOINT_COORDINATES
+# UniqueName,X,Y,Z
+1,0.0,0.0,0.0
+2,1.0,0.0,0.0
+3,1.0,1.0,0.0
+4,0.0,1.0,0.0
+5,0.0,0.0,1.0
+6,1.0,0.0,1.0
+7,1.0,1.0,1.0
+8,0.0,1.0,1.0
+9,2.0,0.0,1.0
+10,2.0,1.0,1.0
+
+* AREAS_CONNECTIVITY
+1,1,2,3,4,0.0
+2,5,6,7,8,0.0
+3,6,9,10,7,0.0
+
+* FRAMES_CONNECTIVITY
+# UniqueName,PointI,PointJ,LocalAxesRot
+1,2,6,0.0

@@ -20,6 +20,7 @@ from ETABSImporter.stko_interface import stko_interface
 #p = parser('Examples/Ex00/Model_Info.txt')
 the_parser = parser('Examples/Ex01/STKO_IMPORT_40_Story_Rc_Core_Wall_Bldng_e4.3.txt')
 #the_parser = parser('Examples/ExLOCAL/horizontal.txt')
+#the_parser = parser('Examples/ExLOCAL/shell.txt')
 
 # process input document
 the_parser.doc.process()

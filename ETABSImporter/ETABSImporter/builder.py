@@ -3,7 +3,7 @@ from ETABSImporter.graph import graph
 from ETABSImporter.document import document, frame, area
 from ETABSImporter.stko_interface import stko_interface
 import itertools
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, DefaultDict
 import math
 
 # a utility class to store the components of the ETABS model
@@ -148,9 +148,8 @@ class builder:
             # also map the tuple of vertices to the STKO a the edge object (assume no overlapping edges!)
             # (will be used to obtain boundary edges for faces)
             # keep track of edges that are not connected to faces!
-            E : Dict[int, FxOccShape] = {}
-            EN : Dict[Tuple[int, int], int] = {}
-            EF : List[int] = []
+            E : Dict[int, FxOccShape] = {} # edges from frame members
+            EN : Dict[Tuple[int, int], int] = {} # vertex_map to E
             for i, f in geom.frames.items():
                 # create the edge from existing vertices in V
                 n1, n2 = f.nodes
@@ -159,7 +158,11 @@ class builder:
                 EN[tuple(sorted((n1, n2)))] = i
             # build areas
             # map the ETABS area id to the STKO face object
+            EF : List[int] = [] # list of indices in E, that are also in faces
+            EFN : Dict[Tuple[int, int], FxOccShape] = {} # maps a edge_key to an edge object generated for areas (not share with frames)
             F : Dict[int, FxOccShape] = {}
+            FG_E : Dict[Tuple[int, int], int] = {} # maps and edge_key to a 0-based index for edges in faces (for face graphs)
+            FG_E_F : DefaultDict[int, List[int]] = DefaultDict(list) # maps a face id to the edges in the face (edges indices in FE_E)
             for i, a in geom.areas.items():
                 # create the face from existing edges in E
                 # get the outer wire (only one supported now)
@@ -167,18 +170,29 @@ class builder:
                 for j in range(len(a.nodes)):
                     n1 = a.nodes[j]
                     n2 = a.nodes[(j+1)%len(a.nodes)]
-                    eid = EN.get(tuple(sorted((n1, n2))), None)
+                    edge_key = tuple(sorted((n1, n2)))
+                    # let's see if the edge is already in the list of edges from frames
+                    eid = EN.get(edge_key, None)
                     if eid is None:
-                        # try get it from EF .... TODO <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-                        # if the edge is not found, it's only a boundary edge, make it here
-                        edge = FxOccBuilder.makeEdge(V[n1], V[n2])
+                        # not from frames, create a new edge or get existing one from other faces
+                        edge = EFN.get(edge_key, None)
+                        if edge is None:
+                            # create a new edge from the vertices
+                            edge = FxOccBuilder.makeEdge(V[n1], V[n2])
+                            EFN[edge_key] = edge
                     else:
                         # the edge is also a frame, mark it as used in face
                         edge = E[eid]
                         EF.append(eid)
                     outer_edges.append(edge)
-                outer_wire = FxOccBuilder.makeWire(outer_edges)
+                    # for face graph...
+                    fg_edge_index = FG_E.get(edge_key, None)
+                    if fg_edge_index is None:
+                        fg_edge_index = len(FG_E)
+                        FG_E[edge_key] = fg_edge_index
+                    FG_E_F[i].append(fg_edge_index)
                 # create the face from the edges
+                outer_wire = FxOccBuilder.makeWire(outer_edges)
                 face = FxOccBuilder.makeFace(outer_wire)
                 F[i] = face
             # obtain floating edges
@@ -205,11 +219,34 @@ class builder:
                     shape = FxOccBuilder.makeCompound(list(V.values()))
                 else:
                     # if we are here, it's a compound of edges and faces
-                    # joint floating edges in 1 or multiple wires
+                    # join floating edges in 1 or multiple wires
                     float_wires = FxOccFactoryCurve.makeWire(list(EFloat.values()))
+                    # join floating faces in 1 or multiple shells
                     # float_faces = FxOccFactorySurfaces.makeShell(list(F.values()), self.etabs_doc.tolerance, False, True)
-                    float_face = FxOccBuilder.makeShell(list(F.values()))
-                    shape = FxOccBuilder.makeCompound(list(itertools.chain(float_wires, [float_face])))
+                    #float_face = FxOccBuilder.makeShell(list(F.values()))
+                    fg_size = len(FG_E)
+                    fg_graph = graph(fg_size)
+                    for face_id, face_edges in FG_E_F.items():
+                        for i,j in itertools.combinations(face_edges, 2):
+                            fg_graph.add_edge(i, j)
+                    fg_edge_groups = fg_graph.connected_components()
+                    float_faces = []
+                    for fg_edge_group in fg_edge_groups:
+                        faces_for_shell = []
+                        for face_id, face_edges in FG_E_F.items():
+                            # if at least one edge is in the group, add the face
+                            for face_edge in face_edges:
+                                if face_edge in fg_edge_group:
+                                    faces_for_shell.append(F[face_id])
+                                    break
+                        if len(faces_for_shell) == 0:
+                            raise Exception('No faces found for shell')
+                        if len(faces_for_shell) == 1:
+                            float_faces.append(faces_for_shell[0])
+                        else:
+                            float_faces.append(FxOccBuilder.makeShell(faces_for_shell))
+                    # make a compound
+                    shape = FxOccBuilder.makeCompound(list(itertools.chain(float_wires, float_faces)))
             # create the STKO geometry
             geom_name = f'Geometry_{geom.id}'
             stko_geom = MpcGeometry(geom.id, geom_name, shape)
