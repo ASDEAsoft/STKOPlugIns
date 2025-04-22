@@ -40,6 +40,7 @@ class document:
         # diaphragm dictionary is used to store the rigid diaphragm members, where the key is the name
         self.diaphragms : Dict[str, List[int]] = {}
         # computed tolerance
+        self.bbox = FxBndBox()
         self.tolerance = 1.0e-6
 
     # return the string representation of the document
@@ -65,18 +66,18 @@ class document:
     # after the document is created
     def process(self):
         # first renumber vertices in 0-based indexing while mergin them
-        self.tolerance = self._tolerance()
+        self._tolerance()
         self._merge_vertices()
 
     # compute tolerance
     def _tolerance(self):
         # compute tolerance based on the average size of the model
-        bbox = FxBndBox()
+        self.bbox = FxBndBox()
         for v in self.vertices.values():
-            bbox.add(v)
-        dl = bbox.maxPoint - bbox.minPoint
+            self.bbox.add(v)
+        dl = self.bbox.maxPoint - self.bbox.minPoint
         avg = (dl.x + dl.y + dl.z) / 3.0
-        return 1.0e-6*avg
+        self.tolerance = 1.0e-6*avg
         
     # merge coincident vertices
     def _merge_vertices(self):

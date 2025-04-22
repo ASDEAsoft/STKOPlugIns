@@ -4,6 +4,7 @@ from ETABSImporter.document import document, frame, area
 from ETABSImporter.stko_interface import stko_interface
 import itertools
 from typing import List, Dict, Tuple
+import math
 
 # a utility class to store the components of the ETABS model
 # that will be part of a single geometry in STKO
@@ -62,6 +63,7 @@ class builder:
             self._build_geometry_groups()
             self._build_geometries()
             self._build_interactions()
+            self._build_local_axes()
         except Exception as e:
             raise
         finally:
@@ -167,6 +169,7 @@ class builder:
                     n2 = a.nodes[(j+1)%len(a.nodes)]
                     eid = EN.get(tuple(sorted((n1, n2))), None)
                     if eid is None:
+                        # try get it from EF .... TODO <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
                         # if the edge is not found, it's only a boundary edge, make it here
                         edge = FxOccBuilder.makeEdge(V[n1], V[n2])
                     else:
@@ -204,15 +207,16 @@ class builder:
                     # if we are here, it's a compound of edges and faces
                     # joint floating edges in 1 or multiple wires
                     float_wires = FxOccFactoryCurve.makeWire(list(EFloat.values()))
-                    float_faces = FxOccFactorySurfaces.makeShell(list(F.values()), self.etabs_doc.tolerance, False, True)
-                    shape = FxOccBuilder.makeCompound(list(itertools.chain(float_wires, float_faces)))
+                    # float_faces = FxOccFactorySurfaces.makeShell(list(F.values()), self.etabs_doc.tolerance, False, True)
+                    float_face = FxOccBuilder.makeShell(list(F.values()))
+                    shape = FxOccBuilder.makeCompound(list(itertools.chain(float_wires, [float_face])))
             # create the STKO geometry
             geom_name = f'Geometry_{geom.id}'
             stko_geom = MpcGeometry(geom.id, geom_name, shape)
             self.stko.add_geometry(stko_geom)
             self._make_map(stko_geom)
 
-    # maps an ETABS _geometry to an STKO MpcGeometry
+    # maps an ETABS _geometry to an STKO MpcGeometry (called by _build_geometries)
     def _make_map(self, geom : MpcGeometry):
         import time
         time_start = time.time()
@@ -313,3 +317,161 @@ class builder:
             self.stko.add_interaction(interaction)
             # map the diaphragm to the interaction
             self._diaphram_map[name] = _interaction_map_item(interaction)
+
+    # builds the local axes and assign them to frame and area geometries in STKO to match
+    # either the default or the user defined local axes in ETABS
+    def _build_local_axes(self):
+        '''
+        Frames:
+        - STKO defaults:
+            - vertical elements: local_y ~= -global_y (0,-1,0)
+            - others: local_z ~= global_z (0,0,1)
+        - ETABS defaults:
+            - vertical elements: local_y ~= global_x (1,0,0)
+            - others: local_y ~= global_z (0,0,1)
+        Areas:
+        - STKO and ETABS defaults are the same
+        '''
+        # tolerance for normalized axis components
+        tol = 1.0e-3
+
+        # next local axes id in STKO
+        next_locax_id = self.stko.new_local_axes_id()
+        # maps a tuple of (x,y,z) to the local axis id
+        # the key is a tuple of integers obtained as the rounded values of the axis components
+        locax_id_map : Dict[Tuple[Tuple[int,int,int], Tuple[int,int,int], Tuple[int,int,int]], int] = {}
+        def _make_key(x:Math.vec3, y:Math.vec3, z:Math.vec3) -> Tuple[Tuple[int,int,int], Tuple[int,int,int], Tuple[int,int,int]]:
+            return (tuple(int(v/tol) for v in x), tuple(int(v/tol) for v in y), tuple(int(v/tol) for v in z))
+        # maps the local axis id to the local axis object in STKO
+        locax_map : Dict[int, MpcLocalAxes] = {}
+        # maps a frame to the local axis id
+        frame_to_locax_id_map : Dict[int, int] = {}
+        # maps an area to the local axis id
+        area_to_locax_id_map : Dict[int, int] = {}
+
+        # define local axes for frames as per ETABS
+        for i, f in self.etabs_doc.frames.items():
+            p1 = self.etabs_doc.vertices[f.nodes[0]]
+            p2 = self.etabs_doc.vertices[f.nodes[1]]
+            # first axis always alligned to the frame
+            dx = (p2 - p1).normalized()
+            # obtain trial dy as per ETABS convention
+            dy = Math.vec3(1,0,0) if abs(dx.z) >= 1.0-tol else Math.vec3(0,0,1)
+            # compute dz by right hand rule
+            dz = dx.cross(dy).normalized()
+            # make dy orhtogonal to dx and dz
+            dy = dz.cross(dx).normalized()
+            # rotate if user define angle is defined
+            if abs(f.angle) > 1.0e-10:
+                q = Math.quaternion.fromAxisAngle(dx, f.angle/180.0*math.pi)
+                dy = q.rotate(dy)
+                dz = q.rotate(dz)
+                # generate ad hoc local axis reference using ETABS local axis
+                GX, GY, GZ = dx, dy, dz
+            else:
+                # generate local axis reference using default ETABS local axis
+                if(abs(dx.z) >= 1.0-tol):
+                    # vertical element
+                    # define a rectangular local axis object with dy = X+ (opposite for dx = -Z?)
+                    GY = Math.vec3(1.0, 0.0, 0.0)
+                    GZ = Math.vec3(0.0, 0.0, 1.0)
+                    GX = Math.vec3(0.0,-1.0, 0.0)
+                else:
+                    # GY should point to the global Z axis 
+                    GY = Math.vec3(0.0, 0.0, 1.0)
+                    if abs(dx.x) < tol:
+                        # aligned with global Y axis (enforce local Y = global Y+)
+                        if dx.y > 0.0:
+                            GZ = Math.vec3(1.0, 0.0, 0.0)
+                            GX = Math.vec3(0.0, 1.0, 0.0)
+                        else:
+                            GZ = Math.vec3(-1.0, 0.0, 0.0)
+                            GX = Math.vec3(0.0, -1.0, 0.0)
+                    else:
+                        # aligned with X or skew in XY plane projection
+                        # (enforce local Y = global Y+)
+                        if dx.x > 0.0:
+                            GZ = Math.vec3(0.0,-1.0, 0.0)
+                            GX = Math.vec3(1.0, 0.0, 0.0)
+                        else:
+                            GZ = Math.vec3(0.0, 1.0, 0.0)
+                            GX = Math.vec3(-1.0, 0.0, 0.0)
+            # map it
+            locax_key = _make_key(GX, GY, GZ)
+            locax_id = locax_id_map.get(locax_key, None)
+            if locax_id is None:
+                locax_id = next_locax_id
+                locax_id_map[locax_key] = next_locax_id
+                next_locax_id += 1
+            frame_to_locax_id_map[i] = locax_id
+        
+        # define local axes for areas as per ETABS
+        for i, a in self.etabs_doc.areas.items():
+            # find the normal to the area
+            # compute trial local x
+            p1 = self.etabs_doc.vertices[a.nodes[0]]
+            p2 = self.etabs_doc.vertices[a.nodes[1]]
+            dx = (p2 - p1).normalized()
+            # try the first point not aligned with dx
+            # it may be a general polygon (aligned sides) but assumed as a plane,
+            # so there should be at least 3 points that form a plane
+            dz = None
+            for j in range(2, len(a.nodes)):
+                p3 = self.etabs_doc.vertices[a.nodes[j]]
+                dy = (p3 - p1).normalized()
+                _dz = dx.cross(dy).normalized()
+                if _dz.norm() > 0.0:
+                    dz = _dz
+                    break
+            if dz is None:
+                raise Exception(f'Cannot find plane in Area {i}')
+            # set default
+            if abs(dz.z) >= 1.0-tol:
+                dy = Math.vec3(0,1,0)
+            else:
+                dy = Math.vec3(0,0,1)
+            # make dx orthogonal to dy and dz
+            dx = dy.cross(dz).normalized()
+            # rotate if user define angle is defined
+            if abs(a.angle) > 1.0e-10:
+                q = Math.quaternion.fromAxisAngle(dz, a.angle/180.0*math.pi)
+                dx = q.rotate(dx)
+                dy = q.rotate(dy)
+                # map it (only if angle is defined, because the default should be the same as in STKO)
+                locax_key = _make_key(dx, dy, dz)
+                locax_id = locax_id_map.get(locax_key, None)
+                if locax_id is None:
+                    locax_id = next_locax_id
+                    locax_id_map[locax_key] = next_locax_id
+                    next_locax_id += 1
+                area_to_locax_id_map[i] = locax_id
+        
+        # now generate local axes in STKO
+        for (x,y,_), id in locax_id_map.items():
+            # create the local axis object
+            p1 = self.etabs_doc.bbox.minPoint - (self.etabs_doc.bbox.maxPoint - self.etabs_doc.bbox.minPoint).norm()*0.1*Math.vec3(1,1,1)
+            p2 = p1 + Math.vec3(float(x[0])*tol, float(x[1])*tol, float(x[2])*tol)
+            p3 = p1 + Math.vec3(float(y[0])*tol, float(y[1])*tol, float(y[2])*tol)
+            locax = MpcLocalAxes(id, f'Local Axes {id}', MpcLocalAxesType.Rectangular, p1, p2, p3)
+            # add it to the document
+            self.stko.add_local_axes(locax)
+            # map it
+            locax_map[id] = locax
+        
+        # assign to frames
+        for frame_id, locax_id in frame_to_locax_id_map.items():
+            # get the geometry and subshape id
+            frame_data = self._frame_map.get(frame_id, None)
+            if frame_data is None:
+                raise Exception(f'Frame {frame_id} not found in geometry')
+            # set the local axes id
+            frame_data.geom.assign(locax_map[locax_id], frame_data.subshape_id, MpcSubshapeType.Edge)
+        
+        # assign to areas
+        for area_id, locax_id in area_to_locax_id_map.items():
+            # get the geometry and subshape id
+            area_data = self._area_map.get(area_id, None)
+            if area_data is None:
+                raise Exception(f'Area {area_id} not found in geometry')
+            # set the local axes id
+            area_data.geom.assign(locax_map[locax_id], area_data.subshape_id, MpcSubshapeType.Face)
