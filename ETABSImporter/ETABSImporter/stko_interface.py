@@ -1,15 +1,18 @@
 from PyMpc import *
 
+# The interface to the STKO document
 class stko_interface:
     def __init__(
             self,
-            doc : MpcCaeDocument):
-        # the STKO document
+            doc : MpcCaeDocument = None,
+            etabs_filename : str = None):
         self.doc = doc
-        # todo: add some settings
+        self.etabs_filename = etabs_filename
         
-
-
+    # the main method
+    def perform(self):
+        raise Exception('perform() method not implemented.')
+ 
     # start the STKO interface
     def start(self):
         # turn off multithreading on stko
@@ -19,8 +22,6 @@ class stko_interface:
     def stop(self):
         # turn on multithreading on stko
         App.setRegenerateOnWorkingThreadFlag(True)
-
-
 
     # get the local axes id of the last local axes in the document + 1
     def new_local_axes_id(self) -> int:
@@ -33,8 +34,6 @@ class stko_interface:
     # get the interaction id of the last interaction in the document + 1
     def new_interaction_id(self) -> int:
         return self.doc.interactions.getlastkey(0) + 1
-
-
 
     # adds a new local axes to the STKO document
     def add_local_axes(self, locax : MpcLocalAxes):
@@ -58,9 +57,11 @@ class stko_interface:
         self.doc.dirty = True
         App.processEvents()
 
-
-
     # regenerate the document
     def regenerate(self):
         App.runCommand('Regenerate', '2')
         App.processEvents()
+    
+    # send a message to the terminal window
+    def send_message(self, msg : str):
+        print(msg)
