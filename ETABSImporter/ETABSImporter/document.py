@@ -39,6 +39,8 @@ class document:
         self.areas : Dict[int, area] = {}
         # diaphragm dictionary is used to store the rigid diaphragm members, where the key is the name
         self.diaphragms : Dict[str, List[int]] = {}
+        # restraints (key = vertex id, value = list of restraint ids 1 or 0 for 6 DOFs)
+        self.restraints : Dict[int, List[int]] = {}
         # computed tolerance
         self.bbox = FxBndBox()
         self.tolerance = 1.0e-6

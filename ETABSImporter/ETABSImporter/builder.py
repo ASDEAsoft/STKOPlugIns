@@ -372,6 +372,31 @@ class builder:
         # tolerance for normalized axis components
         tol = 1.0e-3
 
+        # utilities for reversing subgeoms
+        def _check_reverse_subshape(stype:MpcSubshapeType, etabs_id:int, axis:Math.vec3):
+            # compare to geom
+            stko_dz = Math.vec3()
+            stko_dx = Math.vec3()
+            stko_dy = Math.vec3()
+            if stype == MpcSubshapeType.Edge:
+                edge_data = self._frame_map.get(etabs_id, None)
+                if edge_data is None:
+                    raise Exception(f'Frame {etabs_id} not found in geometry')
+                edge_data.geom.getLocalAxesOnEdge(edge_data.subshape_id, 0.0, stko_dx, stko_dy, stko_dz)
+                if axis.dot(stko_dx) < 0.0:
+                    print(f'Edge {etabs_id} has inconsistent orientation with the local axes. Reversing it...')
+                    edge_data.geom.shape.toggleEdgeReversedFlag(edge_data.subshape_id)
+            elif stype == MpcSubshapeType.Face:
+                area_data = self._area_map.get(etabs_id, None)
+                if area_data is None:
+                    raise Exception(f'Area {etabs_id} not found in geometry')
+                area_data.geom.getLocalAxesOnFace(area_data.subshape_id, 0.0, 0.0, stko_dx, stko_dy, stko_dz)
+                if axis.dot(stko_dz) < 0.0:
+                    print(f'Area {etabs_id} has inconsistent orientation with the local axes. Reversing it...')
+                    area_data.geom.shape.toggleFaceReversedFlag(area_data.subshape_id)
+            else:
+                raise Exception(f'Unsupported subshape type {stype}')
+
         # next local axes id in STKO
         next_locax_id = self.stko.new_local_axes_id()
         # maps a tuple of (x,y,z) to the local axis id
@@ -398,7 +423,9 @@ class builder:
             dz = dx.cross(dy).normalized()
             # make dy orhtogonal to dx and dz
             dy = dz.cross(dx).normalized()
-            # rotate if user define angle is defined
+            # check if the subshape is reversed in STKO
+            _check_reverse_subshape(MpcSubshapeType.Edge, i, dx)
+            # rotate if user angle is defined
             if abs(f.angle) > 1.0e-10:
                 q = Math.quaternion.fromAxisAngle(dx, f.angle/180.0*math.pi)
                 dy = q.rotate(dy)
@@ -469,6 +496,8 @@ class builder:
                 dy = Math.vec3(0,0,1)
             # make dx orthogonal to dy and dz
             dx = dy.cross(dz).normalized()
+            # check if the subshape is reversed in STKO
+            _check_reverse_subshape(MpcSubshapeType.Face, i, dz)
             # rotate if user define angle is defined
             if abs(a.angle) > 1.0e-10:
                 q = Math.quaternion.fromAxisAngle(dz, a.angle/180.0*math.pi)
@@ -512,3 +541,5 @@ class builder:
                 raise Exception(f'Area {area_id} not found in geometry')
             # set the local axes id
             area_data.geom.assign(locax_map[locax_id], area_data.subshape_id, MpcSubshapeType.Face)
+        
+        

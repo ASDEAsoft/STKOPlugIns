@@ -35,6 +35,7 @@ class parser:
         self._parse_frames()
         self._parse_areas()
         self._parse_diaphragm()
+        self._parse_restraints()
     
     # this function parses the nodes and adds them to the document
     # the nodes are stored in the document as vertices
@@ -64,9 +65,18 @@ class parser:
             self.doc.areas[id] = area(nodes, angle)
     
     def _parse_diaphragm(self):
+        # todo: add the rigid diaphragm to the document only if it's rigid in ETABS (we need a flag)
         for item in self.commands['* JOINT_RIGID_DIAPHRAGMS']:
             words = item.split(',"')
             name = words[0]
             # the last one is the retained id
             items = [int(i.strip()) for i in words[1].replace('"', '').replace('[', '').replace(']', '').replace("'", '').split(',')]
             self.doc.diaphragms[name] = items
+    
+    def _parse_restraints(self):
+        for item in self.commands['* JOINT_RESTRAINTS']:
+            words = item.split(',')
+            id = int(words[0])
+            restraints = [int(words[i]=='Yes') for i in range(1, 7)]
+            print(id, restraints)
+            self.doc.restraints[id] = restraints
