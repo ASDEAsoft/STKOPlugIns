@@ -1092,7 +1092,8 @@ def _makeSectionCut():
 	# get results
 	# todo user GUI <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 	results = _ResultCollection()
-	results.tensor = db.getElementalResult('material.stress', match=MpcOdb.StartsWith)
+	#results.tensor = db.getElementalResult('material.stress', match=MpcOdb.StartsWith)
+	results.tensor = db.getElementalResult('stress', match=MpcOdb.StartsWith)
 	results.shell = db.getElementalResult('section.force (Surfaces; 8 Components', match=MpcOdb.StartsWith)
 	# evaluate all results
 	# todo ON ALL STEPS <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
