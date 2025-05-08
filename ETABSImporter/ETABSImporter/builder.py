@@ -1,10 +1,13 @@
 from PyMpc import *
 from ETABSImporter.graph import graph
-from ETABSImporter.document import document, frame, area
+from ETABSImporter.document import *
 from ETABSImporter.stko_interface import stko_interface
 import itertools
 from typing import List, Dict, Tuple, DefaultDict
 import math
+
+class _globals:
+    fix_labels = ('Ux', 'Uy', 'Uz', 'Rx', 'Ry', 'Rz/3D')
 
 # a utility class to store the components of the ETABS model
 # that will be part of a single geometry in STKO
@@ -57,6 +60,11 @@ class builder:
         self._area_map : Dict[int, _geometry_map_item] = {}
         self._diaphram_map : Dict[str, _interaction_map_item] = {}
 
+        # keep track of stko indices for different entities
+        self.linear_time_series_id : int = 0
+        self._sp_ids : List[int] = []
+        self._mp_ids : List[int] = []
+
         # process
         try:
             self.stko.start()
@@ -64,6 +72,11 @@ class builder:
             self._build_geometries()
             self._build_interactions()
             self._build_local_axes()
+            self._build_conditions_restraints()
+            self._build_conditions_diaphragms()
+            self._build_definitions()
+            self._build_analysis_step_constraint_pattern()
+            self._build_analysis_step_load_patterns()
         except Exception as e:
             raise
         finally:
@@ -541,5 +554,119 @@ class builder:
                 raise Exception(f'Area {area_id} not found in geometry')
             # set the local axes id
             area_data.geom.assign(locax_map[locax_id], area_data.subshape_id, MpcSubshapeType.Face)
-        
-        
+
+    # builds the conditions for restraints in STKO
+    def _build_conditions_restraints(self):
+        # group restraints by type
+        # key = tuple(int * 6), value = list of vertex ids
+        restraints : DefaultDict[Tuple[int,int,int,int,int,int], List[int]] = DefaultDict(list)
+        for i, r in self.etabs_doc.restraints.items():
+            restraints[r].append(i)
+        # process each group of restraints
+        for rtype, asn_nodes in restraints.items():
+            # create a new condition
+            condition = MpcCondition()
+            condition.id = self.stko.new_condition_id()
+            condition.name = f'Restraint {rtype}'
+            # define xobject
+            meta = self.stko.doc.metaDataCondition('Constraints.sp.fix')
+            xobj = MpcXObject.createInstanceOf(meta)
+            xobj.getAttribute('Dimension').string = '3D'
+            xobj.getAttribute('ModelType').string = 'U-R (Displacement+Rotation)'
+            xobj.getAttribute('2D').boolean = False
+            xobj.getAttribute('3D').boolean = True
+            xobj.getAttribute('U (Displacement)').boolean = False
+            xobj.getAttribute('U-P (Displacement+Pressure)').boolean = False
+            xobj.getAttribute('U-R (Displacement+Rotation)').boolean = True
+            for dof_flag, dof_label in zip(rtype, _globals.fix_labels):
+                xobj.getAttribute(dof_label).boolean = dof_flag == 1
+            condition.XObject = xobj
+            # add the assigned nodes to the condition
+            for i in asn_nodes:
+                # get the geometry and subshape id
+                vertex_data = self._vertex_map.get(i, None)
+                if vertex_data is None:
+                    raise Exception(f'Vertex {i} not found in geometry')
+                sset = MpcConditionIndexedSubSet()
+                sset.vertices.append(vertex_data.subshape_id)
+                condition.assignTo(vertex_data.geom, sset)
+            # add the condition to the document
+            self.stko.add_condition(condition)
+            condition.commitXObjectChanges()
+            # track the condition id
+            self._sp_ids.append(condition.id)
+    
+    # builds the conditions for rigid diaphragms in STKO
+    def _build_conditions_diaphragms(self):
+        # group restraints by type
+        # key = tuple(int * 6), value = list of vertex ids
+        for name, _ in self.etabs_doc.diaphragms.items():
+            # create a new condition
+            condition = MpcCondition()
+            condition.id = self.stko.new_condition_id()
+            condition.name = f'Diaphragm {name}'
+            # define xobject
+            meta = self.stko.doc.metaDataCondition('Constraints.mp.rigidDiaphragm')
+            xobj = MpcXObject.createInstanceOf(meta)
+            xobj.getAttribute('perpDirn').integer = 3 # default to X-Y plane?
+            condition.XObject = xobj
+            # add the assigned interactions to the condition
+            interaction = self._diaphram_map.get(name, None)
+            if interaction is None:
+                raise Exception(f'Interaction for Diaphragm {name} not found in STKO')
+            condition.assignTo(interaction.interaction)
+            # add the condition to the document
+            self.stko.add_condition(condition)
+            condition.commitXObjectChanges()
+            # track the condition id
+            self._mp_ids.append(condition.id)
+
+    # build definitions
+    def _build_definitions(self):
+        # currently we just need a default linear time series
+        definition = MpcDefinition()
+        definition.id = self.stko.new_definition_id()
+        definition.name = 'Linear Time Series'
+        # define xobject
+        meta = self.stko.doc.metaDataDefinition('timeSeries.Linear')
+        xobj = MpcXObject.createInstanceOf(meta)
+        definition.XObject = xobj
+        # add the definition to the document
+        self.stko.add_definition(definition)
+        definition.commitXObjectChanges()
+        # track the time series id
+        self.linear_time_series_id = definition.id
+
+    # build analysis step : constraint pattern
+    # here we just create 1 pattern with all sp and mp constraints
+    def _build_analysis_step_constraint_pattern(self):
+        # create a new analysis step
+        step = MpcAnalysisStep()
+        step.id = self.stko.new_analysis_step_id()
+        step.name = 'Constraint Pattern'
+        # define xobject
+        meta = self.stko.doc.metaDataAnalysisStep('Patterns.addPattern.constraintPattern')
+        xobj = MpcXObject.createInstanceOf(meta)
+        xobj.getAttribute('sp').indexVector = self._sp_ids
+        xobj.getAttribute('mp').indexVector = self._mp_ids
+        step.XObject = xobj
+        # add the analysis step to the document
+        self.stko.add_analysis_step(step)
+        step.commitXObjectChanges()
+    
+    # build an analysis step : load patterns
+    def _build_analysis_step_load_patterns(self):
+        for name, pattern in self.etabs_doc.load_patterns.items():
+            # create a new analysis step
+            step = MpcAnalysisStep()
+            step.id = self.stko.new_analysis_step_id()
+            step.name = f'Load Pattern {name}'
+            # define xobject
+            meta = self.stko.doc.metaDataAnalysisStep('Patterns.addPattern.loadPattern')
+            xobj = MpcXObject.createInstanceOf(meta)
+            xobj.getAttribute('tsTag').index = self.linear_time_series_id
+            # todo: add loads...
+            step.XObject = xobj
+            # add the analysis step to the document
+            self.stko.add_analysis_step(step)
+            step.commitXObjectChanges()

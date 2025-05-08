@@ -31,9 +31,21 @@ class stko_interface:
     def new_geometry_id(self) -> int:
         return self.doc.geometries.getlastkey(0) + 1
 
+    # get the definition id of the last definition in the document + 1
+    def new_definition_id(self) -> int:
+        return self.doc.definitions.getlastkey(0) + 1
+
     # get the interaction id of the last interaction in the document + 1
     def new_interaction_id(self) -> int:
         return self.doc.interactions.getlastkey(0) + 1
+
+    # get the condition id of the last condition in the document + 1
+    def new_condition_id(self) -> int:
+        return self.doc.conditions.getlastkey(0) + 1
+
+    # get the analysis step id of the last analysis step in the document + 1
+    def new_analysis_step_id(self) -> int:
+        return self.doc.analysisSteps.getlastkey(0) + 1
 
     # adds a new local axes to the STKO document
     def add_local_axes(self, locax : MpcLocalAxes):
@@ -53,6 +65,27 @@ class stko_interface:
     # adds a new interaction to the STKO document
     def add_interaction(self, inter : MpcInteraction):
         self.doc.addInteraction(inter)
+        self.doc.commitChanges()
+        self.doc.dirty = True
+        App.processEvents()
+
+    # adds a new definition to the STKO document
+    def add_definition(self, defn : MpcDefinition):
+        self.doc.addDefinition(defn)
+        self.doc.commitChanges()
+        self.doc.dirty = True
+        App.processEvents()
+
+    # adds a new condition to the STKO document
+    def add_condition(self, cond : MpcCondition):
+        self.doc.addCondition(cond)
+        self.doc.commitChanges()
+        self.doc.dirty = True
+        App.processEvents()
+
+    # adds a new analysis step to the STKO document
+    def add_analysis_step(self, step : MpcAnalysisStep):
+        self.doc.addAnalysisStep(step)
         self.doc.commitChanges()
         self.doc.dirty = True
         App.processEvents()

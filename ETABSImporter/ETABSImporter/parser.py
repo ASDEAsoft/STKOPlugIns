@@ -1,15 +1,8 @@
-from ETABSImporter.document import document, frame, area
+from ETABSImporter.document import *
 from collections import defaultdict
 from PyMpc import *
 
-'''
-section modifiers parse + STKO
-
-# interaction:
-- rigid diaphragm * JOINTS_RIGID_DIAPHRAGMS
-
-'''
-
+# The parser class is used to parse the ETABS text file and build the document
 class parser:
     
     def __init__(self, fname):
@@ -36,6 +29,7 @@ class parser:
         self._parse_areas()
         self._parse_diaphragm()
         self._parse_restraints()
+        self._parse_load_patterns()
     
     # this function parses the nodes and adds them to the document
     # the nodes are stored in the document as vertices
@@ -48,6 +42,7 @@ class parser:
             z = float(words[3])
             self.doc.vertices[id] = Math.vec3(x,y,z)
     
+    # this function parses the frames and adds them to the document
     def _parse_frames(self):
         for item in self.commands['* FRAMES_CONNECTIVITY']:
             words = item.split(',')
@@ -56,6 +51,7 @@ class parser:
             angle = float(words[-1])
             self.doc.frames[id] = frame(nodes, angle)
     
+    # this function parses the areas and adds them to the document
     def _parse_areas(self):
         for item in self.commands['* AREAS_CONNECTIVITY']:
             words = item.split(',')
@@ -64,6 +60,7 @@ class parser:
             angle = float(words[-1])
             self.doc.areas[id] = area(nodes, angle)
     
+    # this function parses the rigid diaphragms and adds them to the document
     def _parse_diaphragm(self):
         # todo: add the rigid diaphragm to the document only if it's rigid in ETABS (we need a flag)
         for item in self.commands['* JOINT_RIGID_DIAPHRAGMS']:
@@ -73,10 +70,21 @@ class parser:
             items = [int(i.strip()) for i in words[1].replace('"', '').replace('[', '').replace(']', '').replace("'", '').split(',')]
             self.doc.diaphragms[name] = items
     
+    # this function parses the restraints and adds them to the document
     def _parse_restraints(self):
         for item in self.commands['* JOINT_RESTRAINTS']:
             words = item.split(',')
             id = int(words[0])
-            restraints = [int(words[i]=='Yes') for i in range(1, 7)]
+            restraints = tuple([int(words[i]=='Yes') for i in range(1, 7)])
             print(id, restraints)
             self.doc.restraints[id] = restraints
+    
+    # this function parses the load patterns and adds them to the document
+    def _parse_load_patterns(self):
+        for item in self.commands['* LOAD_PATTERNS']:
+            words = item.split(',')
+            name = words[0]
+            is_auto = words[1] == 'Yes'
+            type = words[2]
+            self_wt_mult = float(words[3])
+            self.doc.load_patterns[name] = load_pattern(name, is_auto, type, self_wt_mult)

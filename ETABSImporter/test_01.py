@@ -6,12 +6,14 @@ from PyMpc import *
 import importlib
 import ETABSImporter.parser
 import ETABSImporter.builder
+import ETABSImporter.stko_interface
 import ETABSImporter.stko_interface_plain
 import ETABSImporter.stko_interface_gui
 import ETABSImporter.document
 importlib.reload(ETABSImporter.document)
 importlib.reload(ETABSImporter.parser)
 importlib.reload(ETABSImporter.builder)
+importlib.reload(ETABSImporter.stko_interface)
 importlib.reload(ETABSImporter.stko_interface_plain)
 importlib.reload(ETABSImporter.stko_interface_gui)
 from ETABSImporter.stko_interface_plain import stko_interface_plain

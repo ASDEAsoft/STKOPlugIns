@@ -26,6 +26,18 @@ class area:
     def __repr__(self):
         return self.__str__()
 
+# a load pattern in etabs (Name,IsAuto,Type,SelfWtMult)
+class load_pattern:
+    def __init__(self, name:str, is_auto:bool, type:str, self_wt_mult:float):
+        self.name = name
+        self.is_auto = is_auto
+        self.type = type
+        self.self_wt_mult = self_wt_mult
+    def __str__(self):
+        return '{}: {} {} {}'.format(self.name, self.is_auto, self.type, self.self_wt_mult)
+    def __repr__(self):
+        return self.__str__()
+
 # The document class is used to store the model data
 class document:
 
@@ -40,7 +52,9 @@ class document:
         # diaphragm dictionary is used to store the rigid diaphragm members, where the key is the name
         self.diaphragms : Dict[str, List[int]] = {}
         # restraints (key = vertex id, value = list of restraint ids 1 or 0 for 6 DOFs)
-        self.restraints : Dict[int, List[int]] = {}
+        self.restraints : Dict[int, Tuple[int,int,int,int,int,int]] = {}
+        # load patterns (key = load pattern name, value = load pattern object)
+        self.load_patterns : Dict[str, load_pattern] = {}
         # computed tolerance
         self.bbox = FxBndBox()
         self.tolerance = 1.0e-6
@@ -117,6 +131,11 @@ class document:
         # diaphragms
         for k,v in self.diaphragms.items():
             self.diaphragms[k] = [old_to_new[n] for n in v]
+        # restraints (node id is in the key)
+        _restraints = {i:j for i,j in self.restraints.items()}
+        self.restraints = {}
+        for k,v in _restraints.items():
+            self.restraints[old_to_new[k]] = v
 
 
 
