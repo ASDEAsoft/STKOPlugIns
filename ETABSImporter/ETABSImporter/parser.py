@@ -30,6 +30,7 @@ class parser:
         self._parse_diaphragm()
         self._parse_restraints()
         self._parse_load_patterns()
+        self._parse_joint_loads()
     
     # this function parses the nodes and adds them to the document
     # the nodes are stored in the document as vertices
@@ -88,3 +89,14 @@ class parser:
             type = words[2]
             self_wt_mult = float(words[3])
             self.doc.load_patterns[name] = load_pattern(name, is_auto, type, self_wt_mult)
+    
+    # this function parses the joint loads and adds them to the document
+    def _parse_joint_loads(self):
+        for item in self.commands['* JOINT_LOADS']:
+            words = item.split(',')
+            id = int(words[0])
+            load_pattern = words[1]
+            if load_pattern not in self.doc.load_patterns:
+                raise Exception('Load pattern {} not found'.format(load_pattern))
+            value = tuple([float(words[i]) for i in range(2, 8)])
+            self.doc.joint_loads[id] = joint_load(load_pattern, value)

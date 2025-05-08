@@ -38,6 +38,17 @@ class load_pattern:
     def __repr__(self):
         return self.__str__()
 
+# a joint load in etabs (load_pattern,value)
+# where value is a tuple of 6 floats (Fx,Fy,Fz,Mx,My,Mz)
+class joint_load:
+    def __init__(self, load_pattern:str, value:Tuple[float,float,float,float,float,float]):
+        self.load_pattern = load_pattern
+        self.value = value
+    def __str__(self):
+        return '{} {}'.format(self.load_pattern, self.value)
+    def __repr__(self):
+        return self.__str__()
+
 # The document class is used to store the model data
 class document:
 
@@ -55,6 +66,8 @@ class document:
         self.restraints : Dict[int, Tuple[int,int,int,int,int,int]] = {}
         # load patterns (key = load pattern name, value = load pattern object)
         self.load_patterns : Dict[str, load_pattern] = {}
+        # joint loads (key = vertex id, value = joint load object)
+        self.joint_loads : Dict[int, joint_load] = {}
         # computed tolerance
         self.bbox = FxBndBox()
         self.tolerance = 1.0e-6
@@ -136,6 +149,11 @@ class document:
         self.restraints = {}
         for k,v in _restraints.items():
             self.restraints[old_to_new[k]] = v
+        # joint loads (node id is in the key)
+        _joint_loads = {i:j for i,j in self.joint_loads.items()}
+        self.joint_loads = {}
+        for k,v in _joint_loads.items():
+            self.joint_loads[old_to_new[k]] = v
 
 
 

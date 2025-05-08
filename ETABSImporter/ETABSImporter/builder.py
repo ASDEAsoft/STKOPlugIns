@@ -5,6 +5,7 @@ from ETABSImporter.stko_interface import stko_interface
 import itertools
 from typing import List, Dict, Tuple, DefaultDict
 import math
+from collections import defaultdict
 
 class _globals:
     fix_labels = ('Ux', 'Uy', 'Uz', 'Rx', 'Ry', 'Rz/3D')
@@ -61,9 +62,14 @@ class builder:
         self._diaphram_map : Dict[str, _interaction_map_item] = {}
 
         # keep track of stko indices for different entities
+        # the default linear time series
         self.linear_time_series_id : int = 0
+        # all sp constraints
         self._sp_ids : List[int] = []
+        # all mp constraints
         self._mp_ids : List[int] = []
+        # pattern-name to force condition ids
+        self._pattern_load_ids : DefaultDict[str, List[int]] = defaultdict(list)
 
         # process
         try:
@@ -74,6 +80,7 @@ class builder:
             self._build_local_axes()
             self._build_conditions_restraints()
             self._build_conditions_diaphragms()
+            self._build_conditions_joint_loads()
             self._build_definitions()
             self._build_analysis_step_constraint_pattern()
             self._build_analysis_step_load_patterns()
@@ -621,6 +628,54 @@ class builder:
             # track the condition id
             self._mp_ids.append(condition.id)
 
+    # builds the conditions for joint loads in STKO
+    def _build_conditions_joint_loads(self):
+        # group loads by load pattern in the joint_load object
+        # key = load pattern name, value = dict of node_id : joint loads
+        pattern_loads : DefaultDict[str, Dict[int, joint_load]] = defaultdict(dict)
+        for node_id, load in self.etabs_doc.joint_loads.items():
+            # add the joint load to the group
+            pattern_loads[load.load_pattern][node_id] = load
+        # process each pattern load list and group them by load value
+        for pattern_name, node_load in pattern_loads.items():
+            load_node_map : DefaultDict[Tuple[float, float, float, float, float, float], List[int]] = DefaultDict(list)
+            for node_id, load in node_load.items():
+                load_node_map[load.value].append(node_id)
+            # process each load value and create a condition for it
+            tracked_loads = self._pattern_load_ids[pattern_name]
+            for load_value, node_ids in load_node_map.items():
+                # split load value into force and moment components
+                F = Math.vec3(*load_value[:3])
+                M = Math.vec3(*load_value[3:])
+                for load_vec, meta_name, label in zip((F, M), ('NodeForce', 'NodeCouple'), ('F', 'M')):
+                    # skip null
+                    if load_vec.norm() < 1.0e-10:
+                        continue
+                    # create a new condition
+                    condition = MpcCondition()
+                    condition.id = self.stko.new_condition_id()
+                    condition.name = f'{meta_name} {load_value}'
+                    # define xobject
+                    meta = self.stko.doc.metaDataCondition(f'Loads.Force.{meta_name}')
+                    xobj = MpcXObject.createInstanceOf(meta)
+                    xobj.getAttribute(label).quantityVector3.value = load_vec
+                    condition.XObject = xobj
+                    # add the assigned nodes to the condition
+                    for i in node_ids:
+                        # get the geometry and subshape id
+                        vertex_data = self._vertex_map.get(i, None)
+                        if vertex_data is None:
+                            raise Exception(f'Vertex {i} not found in geometry')
+                        sset = MpcConditionIndexedSubSet()
+                        sset.vertices.append(vertex_data.subshape_id)
+                        condition.assignTo(vertex_data.geom, sset)
+                    # add the condition to the document
+                    self.stko.add_condition(condition)
+                    condition.commitXObjectChanges()
+                    # track the pattern name to force condition id mapping
+                    tracked_loads.append(condition.id)
+
+
     # build definitions
     def _build_definitions(self):
         # currently we just need a default linear time series
@@ -665,7 +720,12 @@ class builder:
             meta = self.stko.doc.metaDataAnalysisStep('Patterns.addPattern.loadPattern')
             xobj = MpcXObject.createInstanceOf(meta)
             xobj.getAttribute('tsTag').index = self.linear_time_series_id
-            # todo: add loads...
+            # add conditions
+            # - load
+            load_ids = self._pattern_load_ids[name]
+            if len(load_ids) > 0:
+                xobj.getAttribute('load').indexVector = load_ids
+            # set xobj
             step.XObject = xobj
             # add the analysis step to the document
             self.stko.add_analysis_step(step)
