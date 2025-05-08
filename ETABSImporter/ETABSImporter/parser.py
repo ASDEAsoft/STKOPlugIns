@@ -31,6 +31,7 @@ class parser:
         self._parse_restraints()
         self._parse_load_patterns()
         self._parse_joint_loads()
+        self._parse_joint_masses()
     
     # this function parses the nodes and adds them to the document
     # the nodes are stored in the document as vertices
@@ -100,3 +101,15 @@ class parser:
                 raise Exception('Load pattern {} not found'.format(load_pattern))
             value = tuple([float(words[i]) for i in range(2, 8)])
             self.doc.joint_loads[id] = joint_load(load_pattern, value)
+    
+    # this function parses the joint masses and adds them to the document
+    def _parse_joint_masses(self):
+        for item in self.commands['* JOINT_ADDITIONAL_MASS']:
+            words = item.split(',')
+            id = int(words[0])
+            mass_xy = float(words[1])
+            mass_z = float(words[2])
+            mmi_x = float(words[3])
+            mmi_y = float(words[4])
+            mmi_z = float(words[5])
+            self.doc.joint_masses[id] = joint_mass(mass_xy, mass_z, mmi_x, mmi_y, mmi_z)

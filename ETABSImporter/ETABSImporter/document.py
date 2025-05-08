@@ -49,6 +49,20 @@ class joint_load:
     def __repr__(self):
         return self.__str__()
 
+# a joint concentrated mass in etabs
+# NodeID,MassXY,MassZ,MMIX,MMIY,MMIZ
+class joint_mass:
+    def __init__(self, mass_xy:float, mass_z:float, mmi_x:float, mmi_y:float, mmi_z:float):
+        self.mass_xy = mass_xy
+        self.mass_z = mass_z
+        self.mmi_x = mmi_x
+        self.mmi_y = mmi_y
+        self.mmi_z = mmi_z
+    def __str__(self):
+        return '{} {} {} {} {}'.format(self.mass_xy, self.mass_z, self.mmi_x, self.mmi_y, self.mmi_z)
+    def __repr__(self):
+        return self.__str__()
+
 # The document class is used to store the model data
 class document:
 
@@ -68,6 +82,8 @@ class document:
         self.load_patterns : Dict[str, load_pattern] = {}
         # joint loads (key = vertex id, value = joint load object)
         self.joint_loads : Dict[int, joint_load] = {}
+        # joint masses (key = vertex id, value = joint mass object)
+        self.joint_masses : Dict[int, joint_mass] = {}
         # computed tolerance
         self.bbox = FxBndBox()
         self.tolerance = 1.0e-6
@@ -154,6 +170,11 @@ class document:
         self.joint_loads = {}
         for k,v in _joint_loads.items():
             self.joint_loads[old_to_new[k]] = v
+        # joint masses (node id is in the key)
+        _joint_masses = {i:j for i,j in self.joint_masses.items()}
+        self.joint_masses = {}
+        for k,v in _joint_masses.items():
+            self.joint_masses[old_to_new[k]] = v
 
 
 
