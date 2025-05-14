@@ -30,7 +30,7 @@ class stko_interface:
     # get the geometry id of the last geometry in the document + 1
     def new_geometry_id(self) -> int:
         return self.doc.geometries.getlastkey(0) + 1
-
+    
     # get the definition id of the last definition in the document + 1
     def new_definition_id(self) -> int:
         return self.doc.definitions.getlastkey(0) + 1
@@ -38,6 +38,10 @@ class stko_interface:
     # get the interaction id of the last interaction in the document + 1
     def new_interaction_id(self) -> int:
         return self.doc.interactions.getlastkey(0) + 1
+
+    # get the id of the last physical property in the document + 1
+    def new_physical_property_id(self) -> int:
+        return self.doc.physicalProperties.getlastkey(0) + 1
 
     # get the condition id of the last condition in the document + 1
     def new_condition_id(self) -> int:
@@ -72,6 +76,13 @@ class stko_interface:
     # adds a new definition to the STKO document
     def add_definition(self, defn : MpcDefinition):
         self.doc.addDefinition(defn)
+        self.doc.commitChanges()
+        self.doc.dirty = True
+        App.processEvents()
+
+    def add_physical_property(self, prop : MpcProperty):
+        # adds a new physical property to the STKO document
+        self.doc.addPhysicalProperty(prop)
         self.doc.commitChanges()
         self.doc.dirty = True
         App.processEvents()

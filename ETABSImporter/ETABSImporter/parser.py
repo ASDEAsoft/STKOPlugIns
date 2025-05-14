@@ -30,6 +30,7 @@ class parser:
         self._parse_nodes()
         self._parse_frames()
         self._parse_areas()
+        self._parse_elastic_material()
         self._parse_diaphragm()
         self._parse_restraints()
         self._parse_load_patterns()
@@ -76,6 +77,28 @@ class parser:
             items = [int(i.strip()) for i in words[1].replace('"', '').replace('[', '').replace(']', '').replace("'", '').split(',')]
             self.doc.diaphragms[name] = items
     
+    # this function parses the elastic material and adds it to the document as elastic_material
+    def _parse_elastic_material(self):
+        for item in self.commands['* MATERIALS_ELASTIC_PROPERTIES']:
+            words = item.split(',')
+            name = words[0]
+            density_type = words[1]
+            unit_weight = float(words[2])
+            unit_mass = float(words[3])
+            e1 = float(words[4])
+            try:
+                g12 = float(words[5])
+                u12 = float(words[6])
+            except:
+                g12 = 0.0
+                u12 = 0.0
+            a1 = float(words[7])
+            # add the material to the document
+            self.doc.elastic_materials[name] = elastic_material(name, density_type, unit_weight, unit_mass, e1, g12, u12, a1)
+            
+
+
+
     # this function parses the restraints and adds them to the document
     def _parse_restraints(self):
         for item in self.commands['* JOINT_RESTRAINTS']:

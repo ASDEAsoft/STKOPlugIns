@@ -62,8 +62,10 @@ class builder:
         self._diaphram_map : Dict[str, _interaction_map_item] = {}
 
         # keep track of stko indices for different entities
+        # material names to tuple of indices (uniaxial material id, NDMaterial id)
+        self._material_ids : Dict[str, Tuple[int,int]] = {}
         # the default linear time series
-        self.linear_time_series_id : int = 0
+        self._linear_time_series_id : int = 0
         # all sp constraints
         self._sp_ids : List[int] = []
         # all mp constraints
@@ -80,11 +82,12 @@ class builder:
             self._build_geometries()
             self._build_interactions()
             self._build_local_axes()
+            self._build_definitions()
+            self._build_elastic_materials()
             self._build_conditions_restraints()
             self._build_conditions_diaphragms()
             self._build_conditions_joint_loads()
             self._build_conditions_joint_masses()
-            self._build_definitions()
             self._build_analysis_step_constraint_pattern()
             self._build_analysis_step_load_patterns()
         except Exception as e:
@@ -565,6 +568,38 @@ class builder:
             # set the local axes id
             area_data.geom.assign(locax_map[locax_id], area_data.subshape_id, MpcSubshapeType.Face)
 
+    # builds uniaxial or nd materials in STKO (todo: make generic material in STKO professional)
+    # from the ETABS material properties
+    def _build_elastic_materials(self):
+        for name, mat in self.etabs_doc.elastic_materials.items():
+            # generate the uniaxial material
+            prop = MpcProperty()
+            prop.id = self.stko.new_physical_property_id()
+            prop.name = f'Elastic Material {name} (1D)'
+            meta = self.stko.doc.metaDataPhysicalProperty('materials.uniaxial.Elastic')
+            xobj = MpcXObject.createInstanceOf(meta)
+            xobj.getAttribute('E').quantityScalar.value = mat.E1
+            prop.XObject = xobj
+            self.stko.add_physical_property(prop)
+            prop.commitXObjectChanges()
+            ID1 = prop.id
+            # generate the nd material
+            prop = MpcProperty()
+            prop.id = self.stko.new_physical_property_id()
+            prop.name = f'Elastic Material {name} (3D)'
+            meta = self.stko.doc.metaDataPhysicalProperty('materials.nD.ElasticIsotropic')
+            xobj = MpcXObject.createInstanceOf(meta)
+            xobj.getAttribute('E').quantityScalar.value = mat.E1
+            xobj.getAttribute('v').real = mat.U12
+            xobj.getAttribute('use_rho').boolean = True
+            xobj.getAttribute('rho').quantityScalar.value = mat.rho
+            prop.XObject = xobj
+            self.stko.add_physical_property(prop)
+            prop.commitXObjectChanges()
+            ID2 = prop.id
+            # add the material to the map
+            self._material_ids[name] = (ID1, ID2)
+
     # builds the conditions for restraints in STKO
     def _build_conditions_restraints(self):
         # group restraints by type
@@ -731,7 +766,7 @@ class builder:
         self.stko.add_definition(definition)
         definition.commitXObjectChanges()
         # track the time series id
-        self.linear_time_series_id = definition.id
+        self._linear_time_series_id = definition.id
 
         # 2. time histories in etabs as path time series definitions in stko
         for name, th in self.etabs_doc.th_functions.items():
@@ -778,7 +813,7 @@ class builder:
             # define xobject
             meta = self.stko.doc.metaDataAnalysisStep('Patterns.addPattern.loadPattern')
             xobj = MpcXObject.createInstanceOf(meta)
-            xobj.getAttribute('tsTag').index = self.linear_time_series_id
+            xobj.getAttribute('tsTag').index = self._linear_time_series_id
             # add conditions
             # - load
             load_ids = self._pattern_load_ids[name]
