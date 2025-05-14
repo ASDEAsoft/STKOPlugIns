@@ -70,6 +70,8 @@ class builder:
         self._mp_ids : List[int] = []
         # pattern-name to force condition ids
         self._pattern_load_ids : DefaultDict[str, List[int]] = defaultdict(list)
+        # time history name to condition ids
+        self._th_ids : Dict[str, int] = {}
 
         # process
         try:
@@ -717,7 +719,7 @@ class builder:
 
     # build definitions
     def _build_definitions(self):
-        # currently we just need a default linear time series
+        # 1. The default linear time series
         definition = MpcDefinition()
         definition.id = self.stko.new_definition_id()
         definition.name = 'Linear Time Series'
@@ -730,6 +732,24 @@ class builder:
         definition.commitXObjectChanges()
         # track the time series id
         self.linear_time_series_id = definition.id
+
+        # 2. time histories in etabs as path time series definitions in stko
+        for name, th in self.etabs_doc.th_functions.items():
+            # create a new definition
+            definition = MpcDefinition()
+            definition.id = self.stko.new_definition_id()
+            definition.name = f'Time History {name}'
+            # define xobject
+            meta = self.stko.doc.metaDataDefinition('timeSeries.Path')
+            xobj = MpcXObject.createInstanceOf(meta)
+            xobj.getAttribute('list_of_values').quantityVector.value = th.values
+            xobj.getAttribute('dt').real = 0.05 #th.dt
+            definition.XObject = xobj
+            # add the definition to the document
+            self.stko.add_definition(definition)
+            definition.commitXObjectChanges()
+            # map
+            self._th_ids[name] = definition.id
 
     # build analysis step : constraint pattern
     # here we just create 1 pattern with all sp and mp constraints

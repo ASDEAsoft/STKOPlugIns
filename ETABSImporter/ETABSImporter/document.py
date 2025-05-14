@@ -63,6 +63,16 @@ class joint_mass:
     def __repr__(self):
         return self.__str__()
 
+# time history function in etabs
+class th_function:
+    def __init__(self, name:str, values:List[float]):
+        self.name = name
+        self.values = values
+    def __str__(self):
+        return '{} {}'.format(self.name, self.values)
+    def __repr__(self):
+        return self.__str__()
+
 # The document class is used to store the model data
 class document:
 
@@ -84,6 +94,8 @@ class document:
         self.joint_loads : Dict[int, joint_load] = {}
         # joint masses (key = vertex id, value = joint mass object)
         self.joint_masses : Dict[int, joint_mass] = {}
+        # time history functions (key = function name, value = function object)
+        self.th_functions : Dict[str, th_function] = {}
         # computed tolerance
         self.bbox = FxBndBox()
         self.tolerance = 1.0e-6

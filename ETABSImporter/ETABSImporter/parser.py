@@ -1,11 +1,14 @@
 from ETABSImporter.document import *
 from collections import defaultdict
+import os
 from PyMpc import *
 
 # The parser class is used to parse the ETABS text file and build the document
 class parser:
     
     def __init__(self, fname):
+        # save the filename
+        self.fname = fname
         # initialize document
         self.doc = document()
         # initialize command map
@@ -32,6 +35,7 @@ class parser:
         self._parse_load_patterns()
         self._parse_joint_loads()
         self._parse_joint_masses()
+        self._parse_time_history_functions()
     
     # this function parses the nodes and adds them to the document
     # the nodes are stored in the document as vertices
@@ -113,3 +117,39 @@ class parser:
             mmi_y = float(words[4])
             mmi_z = float(words[5])
             self.doc.joint_masses[id] = joint_mass(mass_xy, mass_z, mmi_x, mmi_y, mmi_z)
+    
+    # this function parses the time history functions and adds them to the document
+    def _parse_time_history_functions(self):
+        for item in self.commands['* TH_FUNCTIONS']:
+            words = item.split(',')
+            name = words[0]
+            file_name = words[1]
+            # the input file name might be absolute on the user's machine
+            # if we can find the file using the absolute path, we will use it
+            # otherwise we will use the relative path
+            # to the current self.fname
+            if os.path.exists(file_name):
+                # it exists on this machine, either relative or absolute
+                file_name = os.path.abspath(file_name)
+                print('Time history function file {} found'.format(file_name))
+            else:
+                # it doesn't exist, let's find the file name
+                file_name_only = os.path.basename(file_name)
+                print('Time history function file {} not found, searching for it in the same folder as the input file...'.format(file_name_only))
+                # let's search for the file in the same folder as the input file or in the sub-directories
+                # let's get the directory of the input file
+                input_file_dir = os.path.dirname(self.fname)
+                # let's search for the file in the same folder as the input file or in the sub-directories
+                for root, dirs, files in os.walk(input_file_dir):
+                    if file_name_only in files:
+                        file_name = os.path.join(root, file_name_only)
+                        print('   Time history function file {} found'.format(file_name))
+                        break
+                else:
+                    # we didn't find the file
+                    raise Exception('Time history function file {} not found'.format(file_name_only))
+            # read the file
+            with open(file_name, 'r') as ifile:
+                values = [float(pline) for pline in (line.strip() for line in ifile.readlines()) if pline]
+            # save it
+            self.doc.th_functions[name] = th_function(name, values)
