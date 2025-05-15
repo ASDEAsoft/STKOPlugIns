@@ -778,7 +778,7 @@ class builder:
             meta = self.stko.doc.metaDataDefinition('timeSeries.Path')
             xobj = MpcXObject.createInstanceOf(meta)
             xobj.getAttribute('list_of_values').quantityVector.value = th.values
-            xobj.getAttribute('dt').real = 0.05 #th.dt
+            xobj.getAttribute('dt').real = th.dt
             definition.XObject = xobj
             # add the definition to the document
             self.stko.add_definition(definition)

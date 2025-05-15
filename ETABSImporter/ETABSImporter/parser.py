@@ -146,7 +146,8 @@ class parser:
         for item in self.commands['* TH_FUNCTIONS']:
             words = item.split(',')
             name = words[0]
-            file_name = words[1]
+            dt = float(words[1])
+            file_name = words[2]
             # the input file name might be absolute on the user's machine
             # if we can find the file using the absolute path, we will use it
             # otherwise we will use the relative path
@@ -175,4 +176,4 @@ class parser:
             with open(file_name, 'r') as ifile:
                 values = [float(pline) for pline in (line.strip() for line in ifile.readlines()) if pline]
             # save it
-            self.doc.th_functions[name] = th_function(name, values)
+            self.doc.th_functions[name] = th_function(name, dt, values)

@@ -2,7 +2,7 @@
 22.5.1
 
 * MODEL_NAME
-C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\40_Story_Rc_Core_Wall_Bldng_e4.4
+C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\40_Story_Rc_Core_Wall_Bldng_e4.4.EDB
 
 * UNITS
 kip, in, F
@@ -12911,46 +12911,79 @@ SHELLPLATE4,Shell-Thin,CONCBASE,16,0.8,0.8,0.5,0.25,0.25,0.25,1,1,1,1
 1007,SHELLPLATE4,Wall
 
 * TH_FUNCTIONS
-# Name,Filename
-GM10X,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\1101504_fv.txt
-GM10Y,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\2101504_fv.txt
-GM11X,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\1101605_fv.txt
-GM11Y,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\2101605_fv.txt
-GM12X,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\1101619_fv.txt
-GM12Y,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\2101619_fv.txt
-GM13X,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\1101629_fv.txt
-GM13Y,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\2101629_fv.txt
-GM14X,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\1101792_fv.txt
-GM14Y,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\2101792_fv.txt
-GM15X,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\1102114_fv.txt
-GM15Y,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\2102114_fv.txt
-GM1X,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\1100143_fv.txt
-GM1Y,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\2100143_fv.txt
-GM2X,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\1100169_fv.txt
-GM2Y,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\2100169_fv.txt
-GM3X,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\1100757_fv.txt
-GM3Y,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\2100757_fv.txt
-GM4X,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\1100827_fv.txt
-GM4Y,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\2100827_fv.txt
-GM5X,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\1100838_fv.txt
-GM5Y,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\2100838_fv.txt
-GM6X,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\1100900_fv.txt
-GM6Y,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\2100900_fv.txt
-GM7X,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\1101155_fv.txt
-GM7Y,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\2101155_fv.txt
-GM8X,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\1101163_fv.txt
-GM8Y,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\2101163_fv.txt
-GM9X,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\1101436_fv.txt
-GM9Y,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\2101436_fv.txt
+# Name,EqualInt,Filename
+GM10X,0.04,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\1101504_fv.txt
+GM10Y,0.04,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\2101504_fv.txt
+GM11X,0.04,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\1101605_fv.txt
+GM11Y,0.04,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\2101605_fv.txt
+GM12X,0.04,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\1101619_fv.txt
+GM12Y,0.04,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\2101619_fv.txt
+GM13X,0.04,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\1101629_fv.txt
+GM13Y,0.04,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\2101629_fv.txt
+GM14X,0.04,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\1101792_fv.txt
+GM14Y,0.04,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\2101792_fv.txt
+GM15X,0.04,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\1102114_fv.txt
+GM15Y,0.04,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\2102114_fv.txt
+GM1X,0.04,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\1100143_fv.txt
+GM1Y,0.04,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\2100143_fv.txt
+GM2X,0.04,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\1100169_fv.txt
+GM2Y,0.04,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\2100169_fv.txt
+GM3X,0.04,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\1100757_fv.txt
+GM3Y,0.04,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\2100757_fv.txt
+GM4X,0.04,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\1100827_fv.txt
+GM4Y,0.04,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\2100827_fv.txt
+GM5X,0.04,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\1100838_fv.txt
+GM5Y,0.04,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\2100838_fv.txt
+GM6X,0.04,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\1100900_fv.txt
+GM6Y,0.04,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\2100900_fv.txt
+GM7X,0.04,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\1101155_fv.txt
+GM7Y,0.04,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\2101155_fv.txt
+GM8X,0.04,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\1101163_fv.txt
+GM8Y,0.04,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\2101163_fv.txt
+GM9X,0.04,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\1101436_fv.txt
+GM9Y,0.04,C:\Users\kkolozvari\CSU Fullerton Dropbox\Kristijan Kolozvari\Consulting\STKO\ETABS Examples\Ground_Motions\2101436_fv.txt
 
 * LOAD_PATTERNS
 # Name,IsAuto,Type,SelfWtMult
 ~LLRF,Yes,Other,0
 Dead,No,Dead,0
 
-* LOAD_CASES
+* LOAD_CASES_LINEAR_STATIC
 # Name,Group,MassSource,StiffType,LoadType,LoadName,LoadSF,DesignType
 Dead,None,MsSrc1,P-Delta,Load,Dead,1,Program Determined
+
+* LOAD_CASES_TH_NL_DIRECT_INTEGRATION
+# Name,MassSource,InitialCond,NonlinCase,LoadType,LoadName,Function,LoadSF,TransAccSF,RotAccSF,TimeFactor,ArrivalTime,Angle,GeoNonlin,NumSteps,StepSize,ProBy,MassCoeff,StiffCoeff,ProTimeVal1,ProDamping1,ProTimeVal2,ProDamping2,Mode4Ratio,ModalCase,IntType,Gamma,Beta,Theta,Alpha,Alpham,SolScheme,MaxSize,MinSize,EventTol,MaxEvents,MaxCSIters,MaxNRIters,IterTol,LineSearch,MaxSearches,SearchTol,SearchFact,StopAnalysis,MinEvStepSz,MaxNullEvStp,UseCorrStep,DesignType,UserDesType,GUID,Notes
+GM1,Previous,Nonlinear Case,Dead-Nonlinear,Accel,U1,GM1X,,386.09,,1,0,0,P-Delta,1297,0.04,Period Ratio,0.1848,0.0014,0.2,0.025,1.5,0.025,1,Modal-Nonlinear,Hilber-Hughes-Taylor,0.5,0.25,,0,,Iterative Events,0,0,0.01,24,10,40,0.001,Yes,20,0.1,1.618,,,,,Program Determined,,7e41289a-0228-4910-84f6-aaab6a0079fd,
+GM1,,,,Accel,U2,GM1Y,,386.09,,1,0,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+GM10,Previous,Nonlinear Case,Dead-Nonlinear,Accel,U1,GM10X,,386.09,,1,0,0,P-Delta,2750,0.04,Period Ratio,0.1848,0.0014,0.2,0.025,1.5,0.025,1,Modal-Nonlinear,Hilber-Hughes-Taylor,0.5,0.25,,0,,Iterative Events,0,0,0.01,24,10,40,0.001,Yes,20,0.1,1.618,,,,,Program Determined,,1efef5b4-6ad8-4287-9550-c5dd837c3fc1,
+GM10,,,,Accel,U2,GM10Y,,386.09,,1,0,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+GM11,Previous,Nonlinear Case,Dead-Nonlinear,Accel,U1,GM11X,,386.09,,1,0,0,P-Delta,1148,0.04,Period Ratio,0.1848,0.0014,0.2,0.025,1.5,0.025,1,Modal-Nonlinear,Hilber-Hughes-Taylor,0.5,0.25,,0,,Iterative Events,0,0,0.01,24,10,40,0.001,Yes,20,0.1,1.618,,,,,Program Determined,,8facfe6d-9835-40c1-a253-f0ab5fe9c7a9,
+GM11,,,,Accel,U2,GM11Y,,386.09,,1,0,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+GM12,Previous,Nonlinear Case,Dead-Nonlinear,Accel,U1,GM12X,,386.09,,1,0,0,P-Delta,1221,0.04,Period Ratio,0.1848,0.0014,0.2,0.025,1.5,0.025,1,Modal-Nonlinear,Hilber-Hughes-Taylor,0.5,0.25,,0,,Iterative Events,0,0,0.01,24,10,40,0.001,Yes,20,0.1,1.618,,,,,Program Determined,,d973bea1-ac23-4047-b738-c5080694ffd2,
+GM12,,,,Accel,U2,GM12Y,,386.09,,1,0,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+GM13,Previous,Nonlinear Case,Dead-Nonlinear,Accel,U1,GM13X,,386.09,,1,0,0,P-Delta,2575,0.04,Period Ratio,0.1848,0.0014,0.2,0.025,1.5,0.025,1,Modal-Nonlinear,Hilber-Hughes-Taylor,0.5,0.25,,0,,Iterative Events,0,0,0.01,24,10,40,0.001,Yes,20,0.1,1.618,,,,,Program Determined,,533be38d-d958-46f0-9021-adee19f0d62c,
+GM13,,,,Accel,U2,GM13Y,,386.09,,1,0,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+GM14,Previous,Nonlinear Case,Dead-Nonlinear,Accel,U1,GM14X,,386.09,,1,0,0,P-Delta,3000,0.04,Period Ratio,0.1848,0.0014,0.2,0.025,1.5,0.025,1,Modal-Nonlinear,Hilber-Hughes-Taylor,0.5,0.25,,0,,Iterative Events,0,0,0.01,24,10,40,0.001,Yes,20,0.1,1.618,,,,,Program Determined,,af49f0e7-663e-44de-a9db-a13b43cdf9b6,
+GM14,,,,Accel,U2,GM14Y,,386.09,,1,0,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+GM15,Previous,Nonlinear Case,Dead-Nonlinear,Accel,U1,GM15X,,386.09,,1,0,0,P-Delta,2750,0.04,Period Ratio,0.1848,0.0014,0.2,0.025,1.5,0.025,1,Modal-Nonlinear,Hilber-Hughes-Taylor,0.5,0.25,,0,,Iterative Events,0,0,0.01,24,10,40,0.001,Yes,20,0.1,1.618,,,,,Program Determined,,0d1189d8-96c8-44cd-9a07-77c121813420,
+GM15,,,,Accel,U2,GM15Y,,386.09,,1,0,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+GM2,Previous,Nonlinear Case,Dead-Nonlinear,Accel,U1,GM2X,,386.09,,1,0,0,P-Delta,2954,0.04,Period Ratio,0.1848,0.0014,0.2,0.025,1.5,0.025,1,Modal-Nonlinear,Hilber-Hughes-Taylor,0.5,0.25,,0,,Iterative Events,0,0,0.01,24,10,40,0.001,Yes,20,0.1,1.618,,,,,Program Determined,,29375237-1c52-4e53-bbce-46f07d5523a5,
+GM2,,,,Accel,U2,GM2Y,,386.09,,1,0,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+GM3,Previous,Nonlinear Case,Dead-Nonlinear,Accel,U1,GM3X,,386.09,,1,0,0,P-Delta,2076,0.04,Period Ratio,0.1848,0.0014,0.2,0.025,1.5,0.025,1,Modal-Nonlinear,Hilber-Hughes-Taylor,0.5,0.25,,0,,Iterative Events,0,0,0.01,24,10,40,0.001,Yes,20,0.1,1.618,,,,,Program Determined,,2361db25-111e-48a5-9a48-c1fe2a515fc5,
+GM3,,,,Accel,U2,GM3Y,,386.09,,1,0,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+GM4,Previous,Nonlinear Case,Dead-Nonlinear,Accel,U1,GM4X,,386.09,,1,0,0,P-Delta,1600,0.04,Period Ratio,0.1848,0.0014,0.2,0.025,1.5,0.025,1,Modal-Nonlinear,Hilber-Hughes-Taylor,0.5,0.25,,0,,Iterative Events,0,0,0.01,24,10,40,0.001,Yes,20,0.1,1.618,,,,,Program Determined,,e913c862-b2fe-4232-a8d6-f4cea038d20a,
+GM4,,,,Accel,U2,GM4Y,,386.09,,1,0,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+GM5,Previous,Nonlinear Case,Dead-Nonlinear,Accel,U1,GM5X,,386.09,,1,0,0,P-Delta,1500,0.04,Period Ratio,0.1848,0.0014,0.2,0.025,1.5,0.025,1,Modal-Nonlinear,Hilber-Hughes-Taylor,0.5,0.25,,0,,Iterative Events,0,0,0.01,24,10,40,0.001,Yes,20,0.1,1.618,,,,,Program Determined,,ac3fb14f-c5b3-4f48-8621-29486d38d6fb,
+GM5,,,,Accel,U2,GM5Y,,386.09,,1,0,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+GM6,Previous,Nonlinear Case,Dead-Nonlinear,Accel,U1,GM6X,,386.09,,1,0,0,P-Delta,1556,0.04,Period Ratio,0.1848,0.0014,0.2,0.025,1.5,0.025,1,Modal-Nonlinear,Hilber-Hughes-Taylor,0.5,0.25,,0,,Iterative Events,0,0,0.01,24,10,40,0.001,Yes,20,0.1,1.618,,,,,Program Determined,,38964f2c-ce76-45a4-bbb3-f98977a409f2,
+GM6,,,,Accel,U2,GM6Y,,386.09,,1,0,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+GM7,Previous,Nonlinear Case,Dead-Nonlinear,Accel,U1,GM7X,,386.09,,1,0,0,P-Delta,3920,0.04,Period Ratio,0.1848,0.0014,0.2,0.025,1.5,0.025,1,Modal-Nonlinear,Hilber-Hughes-Taylor,0.5,0.25,,0,,Iterative Events,0,0,0.01,24,10,40,0.001,Yes,20,0.1,1.618,,,,,Program Determined,,8633f0d0-7dd5-426a-8037-b5e6f68831c1,
+GM7,,,,Accel,U2,GM7Y,,386.09,,1,0,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+GM8,Previous,Nonlinear Case,Dead-Nonlinear,Accel,U1,GM8X,,386.09,,1,0,0,P-Delta,3107,0.04,Period Ratio,0.1848,0.0014,0.2,0.025,1.5,0.025,1,Modal-Nonlinear,Hilber-Hughes-Taylor,0.5,0.25,,0,,Iterative Events,0,0,0.01,24,10,40,0.001,Yes,20,0.1,1.618,,,,,Program Determined,,e4640a61-79d9-4727-bb41-9743ecd43a6a,
+GM8,,,,Accel,U2,GM8Y,,386.09,,1,0,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+GM9,Previous,Nonlinear Case,Dead-Nonlinear,Accel,U1,GM9X,,386.09,,1,0,0,P-Delta,2701,0.04,Period Ratio,0.1848,0.0014,0.2,0.025,1.5,0.025,1,Modal-Nonlinear,Hilber-Hughes-Taylor,0.5,0.25,,0,,Iterative Events,0,0,0.01,24,10,40,0.001,Yes,20,0.1,1.618,,,,,Program Determined,,424a8abb-fac1-4913-b8c3-c5b5879bee52,
+GM9,,,,Accel,U2,GM9Y,,386.09,,1,0,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 
 * LOAD_COMBINATIONS
 # Name,Type,IsAuto,LoadName,Mode,SF

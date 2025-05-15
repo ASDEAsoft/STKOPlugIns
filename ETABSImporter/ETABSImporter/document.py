@@ -81,11 +81,12 @@ class joint_mass:
 
 # time history function in etabs
 class th_function:
-    def __init__(self, name:str, values:List[float]):
+    def __init__(self, name:str, dt:float, values:List[float]):
         self.name = name
+        self.dt = dt
         self.values = values
     def __str__(self):
-        return '{} {}'.format(self.name, self.values)
+        return '{} {} {}'.format(self.name, self.dt, self.values)
     def __repr__(self):
         return self.__str__()
 
