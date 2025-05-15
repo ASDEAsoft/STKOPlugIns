@@ -64,6 +64,8 @@ class builder:
         # keep track of stko indices for different entities
         # material names to tuple of indices (uniaxial material id, NDMaterial id)
         self._material_ids : Dict[str, Tuple[int,int]] = {}
+        # area material names to int (section id)
+        self._area_material_ids : Dict[str, int] = {}
         # the default linear time series
         self._linear_time_series_id : int = 0
         # all sp constraints
@@ -84,6 +86,7 @@ class builder:
             self._build_local_axes()
             self._build_definitions()
             self._build_elastic_materials()
+            self._build_area_materials()
             self._build_conditions_restraints()
             self._build_conditions_diaphragms()
             self._build_conditions_joint_loads()
@@ -599,6 +602,28 @@ class builder:
             ID2 = prop.id
             # add the material to the map
             self._material_ids[name] = (ID1, ID2)
+
+    # builds the area materials in STKO
+    def _build_area_materials(self):
+        for name, section in self.etabs_doc.area_materials.items():
+            # obtain the material
+            mat = self.etabs_doc.elastic_materials.get(section.material, None)
+            # generate the area section
+            prop = MpcProperty()
+            prop.id = self.stko.new_physical_property_id()
+            prop.name = f'Area Section {name}'
+            meta = self.stko.doc.metaDataPhysicalProperty('sections.ElasticMembranePlateSection')
+            xobj = MpcXObject.createInstanceOf(meta)
+            xobj.getAttribute('E').quantityScalar.value = mat.E1 * section.Fmod if mat else 0.0
+            xobj.getAttribute('nu').real = mat.U12 if mat else 0.0
+            xobj.getAttribute('h').quantityScalar.value = section.thickness
+            xobj.getAttribute('rho').quantityScalar.value = mat.rho if mat else 0.0
+            xobj.getAttribute('Ep_mod').real = section.Mmod / section.Fmod
+            prop.XObject = xobj
+            self.stko.add_physical_property(prop)
+            prop.commitXObjectChanges()
+            # add the material to the map
+            self._area_material_ids[name] = prop.id
 
     # builds the conditions for restraints in STKO
     def _build_conditions_restraints(self):

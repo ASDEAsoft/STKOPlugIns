@@ -2,6 +2,14 @@ from PyMpc import *
 
 # The interface to the STKO document
 class stko_interface:
+
+    # the message types
+    class message_type:
+        INFO = 0
+        WARNING = 1
+        ERROR = 2
+
+    # the constructor
     def __init__(
             self,
             doc : MpcCaeDocument = None,
@@ -106,6 +114,10 @@ class stko_interface:
         App.runCommand('Regenerate', '2')
         App.processEvents()
     
+    # send a percentage to the terminal window
+    def send_percentage(self, percentage : float):
+        ...
+
     # send a message to the terminal window
-    def send_message(self, msg : str):
+    def send_message(self, msg : str, mtype : message_type = message_type.INFO):
         print(msg)

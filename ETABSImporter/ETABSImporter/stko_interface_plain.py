@@ -21,7 +21,7 @@ class stko_interface_plain(stko_interface):
             # parse the input file
             if self.etabs_filename is None:
                 raise Exception('No input file provided.')
-            the_parser = parser(self.etabs_filename)
+            the_parser = parser(self.etabs_filename, interface=self)
             the_parser.doc.process()
             # build the document
             the_builder = builder(the_parser.doc, self)

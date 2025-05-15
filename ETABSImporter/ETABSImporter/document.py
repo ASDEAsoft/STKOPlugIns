@@ -42,6 +42,21 @@ class elastic_material:
     def __repr__(self):
         return self.__str__()
 
+# The area material class is used to store the properties of an area material
+class area_material:
+    def __init__(self, name:str, type:str, material:str, thickness:float, Fmod:float, Mmod:float, is_wall:bool=False):
+        self.name = name
+        self.type = type
+        self.material = material
+        self.thickness = thickness
+        self.Fmod = Fmod
+        self.Mmod = Mmod
+        self.is_wall = is_wall
+    def __str__(self):
+        return '{} {} {} {} {} {} {}'.format(self.name, self.type, self.material, self.thickness, self.Fmod, self.Mmod, 'Wall' if self.is_wall else 'Slab')
+    def __repr__(self):
+        return self.__str__()
+
 # a load pattern in etabs (Name,IsAuto,Type,SelfWtMult)
 class load_pattern:
     def __init__(self, name:str, is_auto:bool, type:str, self_wt_mult:float):
@@ -103,6 +118,8 @@ class document:
         self.areas : Dict[int, area] = {}
         # The elastic materials dictionary is used to store the properties of the elastic materials
         self.elastic_materials : Dict[str, elastic_material] = {}
+        # The area materials dictionary is used to store the properties of the area materials
+        self.area_materials : Dict[str, area_material] = {}
         # diaphragm dictionary is used to store the rigid diaphragm members, where the key is the name
         self.diaphragms : Dict[str, List[int]] = {}
         # restraints (key = vertex id, value = list of restraint ids 1 or 0 for 6 DOFs)

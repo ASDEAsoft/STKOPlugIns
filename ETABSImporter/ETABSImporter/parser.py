@@ -1,4 +1,5 @@
 from ETABSImporter.document import *
+from ETABSImporter.stko_interface import stko_interface
 from collections import defaultdict
 import os
 from PyMpc import *
@@ -6,11 +7,13 @@ from PyMpc import *
 # The parser class is used to parse the ETABS text file and build the document
 class parser:
     
-    def __init__(self, fname):
+    def __init__(self, fname, interface:stko_interface=None):
         # save the filename
         self.fname = fname
         # initialize document
         self.doc = document()
+        # save the interface
+        self.interface = interface
         # initialize command map
         self.commands = defaultdict(list)
         # build command map
@@ -31,6 +34,7 @@ class parser:
         self._parse_frames()
         self._parse_areas()
         self._parse_elastic_material()
+        self._parse_area_material()
         self._parse_diaphragm()
         self._parse_restraints()
         self._parse_load_patterns()
@@ -95,9 +99,49 @@ class parser:
             a1 = float(words[7])
             # add the material to the document
             self.doc.elastic_materials[name] = elastic_material(name, density_type, unit_weight, unit_mass, e1, g12, u12, a1)
-            
 
-
+    # this function parses the area material and adds it to the document as area_material     
+    def _parse_area_material(self):
+        for is_wall in (False, True):
+            for item in self.commands['* AREA_SECTION_PROPERTIES_{}'.format('WALL' if is_wall else 'SLAB')]:
+                words = item.split(',')
+                name = words[0]
+                type = words[1]
+                material = words[2]
+                try:
+                    thickness = float(words[3])
+                except:
+                    thickness = 0.0
+                f11 = float(words[4])
+                f22 = float(words[5])
+                f12 = float(words[6])
+                m11 = float(words[7])
+                m22 = float(words[8])
+                m12 = float(words[9])
+                v13 = float(words[10])
+                v23 = float(words[11])
+                mmod = float(words[12])
+                wmod = float(words[13])
+                # f11 f22 and f12 should be equal to each other
+                # m11 m22 and m12 should be equal to each other
+                # v13 and v23 should be one
+                # mmod and wmod should be zero
+                if (f11 != f22 or f11 != f12) and (self.interface is not None):
+                    self.interface.send_message(f'[AREA_SECTION_PROPERTIES {name}]: f11, f22 and f12 should be equal to each other',
+                                                 mtype=stko_interface.message_type.WARNING)
+                if (m11 != m22 or m11 != m12) and (self.interface is not None):
+                    self.interface.send_message(f'[AREA_SECTION_PROPERTIES {name}]: m11, m22 and m12 should be equal to each other', 
+                                                mtype=stko_interface.message_type.WARNING)
+                if (v13 != f11 or v23 != f11) and (self.interface is not None):
+                    self.interface.send_message(f'[AREA_SECTION_PROPERTIES {name}]: v13 and v23 should be equal to f11', 
+                                                mtype=stko_interface.message_type.WARNING)
+                if (mmod != 1.0 or wmod != 1.0) and (self.interface is not None):
+                    self.interface.send_message(f'[AREA_SECTION_PROPERTIES {name}]: mmod and wmod should be one', 
+                                                mtype=stko_interface.message_type.WARNING)
+                # creae the area material
+                amat = area_material(name, type, material, thickness, f11, m11, is_wall=is_wall)
+                # add the area material to the document
+                self.doc.area_materials[name] = amat
 
     # this function parses the restraints and adds them to the document
     def _parse_restraints(self):
