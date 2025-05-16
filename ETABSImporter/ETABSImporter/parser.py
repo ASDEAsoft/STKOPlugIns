@@ -33,10 +33,10 @@ class parser:
         self._parse_nodes()
         self._parse_frames()
         self._parse_areas()
-        self._parse_elastic_material()
-        self._parse_area_material()
-        self._parse_area_material_assignments()
-        self._parse_diaphragm()
+        self._parse_elastic_materials()
+        self._parse_area_sections()
+        self._parse_area_sections_assignment()
+        self._parse_diaphragms()
         self._parse_restraints()
         self._parse_load_patterns()
         self._parse_joint_loads()
@@ -73,7 +73,7 @@ class parser:
             self.doc.areas[id] = area(nodes, angle)
     
     # this function parses the rigid diaphragms and adds them to the document
-    def _parse_diaphragm(self):
+    def _parse_diaphragms(self):
         # todo: add the rigid diaphragm to the document only if it's rigid in ETABS (we need a flag)
         for item in self.commands['* JOINT_RIGID_DIAPHRAGMS']:
             words = item.split(',"')
@@ -83,7 +83,7 @@ class parser:
             self.doc.diaphragms[name] = items
     
     # this function parses the elastic material and adds it to the document as elastic_material
-    def _parse_elastic_material(self):
+    def _parse_elastic_materials(self):
         for item in self.commands['* MATERIALS_ELASTIC_PROPERTIES']:
             words = item.split(',')
             name = words[0]
@@ -101,8 +101,8 @@ class parser:
             # add the material to the document
             self.doc.elastic_materials[name] = elastic_material(name, density_type, unit_weight, unit_mass, e1, g12, u12, a1)
 
-    # this function parses the area material and adds it to the document as area_material     
-    def _parse_area_material(self):
+    # this function parses the area section and adds it to the document as area_material     
+    def _parse_area_sections(self):
         for is_wall in (False, True):
             for item in self.commands['* AREA_SECTION_PROPERTIES_{}'.format('WALL' if is_wall else 'SLAB')]:
                 words = item.split(',')
@@ -140,18 +140,18 @@ class parser:
                     self.interface.send_message(f'[AREA_SECTION_PROPERTIES {name}]: mmod and wmod should be one', 
                                                 mtype=stko_interface.message_type.WARNING)
                 # creae the area material
-                amat = area_material(name, type, material, thickness, f11, m11, is_wall=is_wall)
+                asec = area_section(name, type, material, thickness, f11, m11, is_wall=is_wall)
                 # add the area material to the document
-                self.doc.area_materials[name] = amat
+                self.doc.area_sections[name] = asec
 
-    # this function parses the restraints and adds them to the document
-    def _parse_area_material_assignments(self):
+    # this function parses the area section assignments and adds them to the document
+    def _parse_area_sections_assignment(self):
         for item in self.commands['* AREA_SECTION_PROPERTIES_ASSIGNMENT']:
             words = item.split(',')
             area_id = int(words[0])
             material_name = words[1]
             # words[2] is not used here! wall or slab determined by the _parse_area_material command
-            self.doc.area_materials_assignment[material_name].append(area_id)
+            self.doc.area_sections_assignment[material_name].append(area_id)
 
     # this function parses the restraints and adds them to the document
     def _parse_restraints(self):

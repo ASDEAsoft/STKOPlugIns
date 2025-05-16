@@ -61,7 +61,7 @@ class builder:
         self._area_map : Dict[int, _geometry_map_item] = {}
         self._diaphram_map : Dict[str, _interaction_map_item] = {}
         self._material_map : Dict[str, Tuple[MpcProperty,MpcProperty]] = {} # value = tuple (uniaxial material, NDMaterial)
-        self._area_material_map : Dict[str, MpcProperty] = {}
+        self._area_section_map : Dict[str, MpcProperty] = {}
 
         # keep track of stko indices for different entities
         # the default linear time series
@@ -84,8 +84,8 @@ class builder:
             self._build_local_axes()
             self._build_definitions()
             self._build_elastic_materials()
-            self._build_area_materials()
-            self._assign_area_materials()
+            self._build_area_sections()
+            self._assign_area_sections()
             self._build_conditions_restraints()
             self._build_conditions_diaphragms()
             self._build_conditions_joint_loads()
@@ -602,9 +602,9 @@ class builder:
             # add the material to the map
             self._material_map[name] = (P1, P2)
 
-    # builds the area materials in STKO
-    def _build_area_materials(self):
-        for name, section in self.etabs_doc.area_materials.items():
+    # builds the area sections in STKO
+    def _build_area_sections(self):
+        for name, section in self.etabs_doc.area_sections.items():
             # obtain the material
             mat = self.etabs_doc.elastic_materials.get(section.material, None)
             # generate the area section
@@ -621,14 +621,14 @@ class builder:
             prop.XObject = xobj
             self.stko.add_physical_property(prop)
             prop.commitXObjectChanges()
-            # add the material to the map
-            self._area_material_map[name] = prop
+            # add the section to the map
+            self._area_section_map[name] = prop
     
-    # assignes the area materials to the areas in STKO
-    def _assign_area_materials(self):
-        for area_mat_name, area_ids in self.etabs_doc.area_materials_assignment.items():
+    # assignes the area sections to the areas in STKO
+    def _assign_area_sections(self):
+        for area_mat_name, area_ids in self.etabs_doc.area_sections_assignment.items():
             # get the phsyical property id
-            prop = self._area_material_map.get(area_mat_name, None)
+            prop = self._area_section_map.get(area_mat_name, None)
             if prop is None:
                 raise Exception(f'Area material {area_mat_name} not found in STKO')
             # assign the property to the areas
