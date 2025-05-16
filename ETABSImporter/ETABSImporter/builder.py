@@ -55,17 +55,15 @@ class builder:
         # the grouped geometries (key = id in STKO)
         self._geoms : Dict[int, _geometry] = {}
 
-        # mapping of the ETABS entities to the STKO geometries
+        # mapping of the ETABS entities to the STKO entities
         self._vertex_map : Dict[int, _geometry_map_item] = {}
         self._frame_map : Dict[int, _geometry_map_item] = {} 
         self._area_map : Dict[int, _geometry_map_item] = {}
         self._diaphram_map : Dict[str, _interaction_map_item] = {}
+        self._material_map : Dict[str, Tuple[MpcProperty,MpcProperty]] = {} # value = tuple (uniaxial material, NDMaterial)
+        self._area_material_map : Dict[str, MpcProperty] = {}
 
         # keep track of stko indices for different entities
-        # material names to tuple of indices (uniaxial material id, NDMaterial id)
-        self._material_ids : Dict[str, Tuple[int,int]] = {}
-        # area material names to int (section id)
-        self._area_material_ids : Dict[str, int] = {}
         # the default linear time series
         self._linear_time_series_id : int = 0
         # all sp constraints
@@ -87,6 +85,7 @@ class builder:
             self._build_definitions()
             self._build_elastic_materials()
             self._build_area_materials()
+            self._assign_area_materials()
             self._build_conditions_restraints()
             self._build_conditions_diaphragms()
             self._build_conditions_joint_loads()
@@ -585,7 +584,7 @@ class builder:
             prop.XObject = xobj
             self.stko.add_physical_property(prop)
             prop.commitXObjectChanges()
-            ID1 = prop.id
+            P1 = prop
             # generate the nd material
             prop = MpcProperty()
             prop.id = self.stko.new_physical_property_id()
@@ -599,9 +598,9 @@ class builder:
             prop.XObject = xobj
             self.stko.add_physical_property(prop)
             prop.commitXObjectChanges()
-            ID2 = prop.id
+            P2 = prop
             # add the material to the map
-            self._material_ids[name] = (ID1, ID2)
+            self._material_map[name] = (P1, P2)
 
     # builds the area materials in STKO
     def _build_area_materials(self):
@@ -623,7 +622,23 @@ class builder:
             self.stko.add_physical_property(prop)
             prop.commitXObjectChanges()
             # add the material to the map
-            self._area_material_ids[name] = prop.id
+            self._area_material_map[name] = prop
+    
+    # assignes the area materials to the areas in STKO
+    def _assign_area_materials(self):
+        for area_mat_name, area_ids in self.etabs_doc.area_materials_assignment.items():
+            # get the phsyical property id
+            prop = self._area_material_map.get(area_mat_name, None)
+            if prop is None:
+                raise Exception(f'Area material {area_mat_name} not found in STKO')
+            # assign the property to the areas
+            for area_id in area_ids:
+                # get the geometry and subshape id
+                area_data = self._area_map.get(area_id, None)
+                if area_data is None:
+                    raise Exception(f'Area {area_id} not found in geometry')
+                # assign the property to the geometry
+                area_data.geom.assign(prop, area_data.subshape_id, MpcSubshapeType.Face)
 
     # builds the conditions for restraints in STKO
     def _build_conditions_restraints(self):

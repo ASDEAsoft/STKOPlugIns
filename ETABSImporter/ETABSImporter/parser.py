@@ -35,6 +35,7 @@ class parser:
         self._parse_areas()
         self._parse_elastic_material()
         self._parse_area_material()
+        self._parse_area_material_assignments()
         self._parse_diaphragm()
         self._parse_restraints()
         self._parse_load_patterns()
@@ -142,6 +143,15 @@ class parser:
                 amat = area_material(name, type, material, thickness, f11, m11, is_wall=is_wall)
                 # add the area material to the document
                 self.doc.area_materials[name] = amat
+
+    # this function parses the restraints and adds them to the document
+    def _parse_area_material_assignments(self):
+        for item in self.commands['* AREA_SECTION_PROPERTIES_ASSIGNMENT']:
+            words = item.split(',')
+            area_id = int(words[0])
+            material_name = words[1]
+            # words[2] is not used here! wall or slab determined by the _parse_area_material command
+            self.doc.area_materials_assignment[material_name].append(area_id)
 
     # this function parses the restraints and adds them to the document
     def _parse_restraints(self):

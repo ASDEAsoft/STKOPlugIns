@@ -120,6 +120,8 @@ class document:
         self.elastic_materials : Dict[str, elastic_material] = {}
         # The area materials dictionary is used to store the properties of the area materials
         self.area_materials : Dict[str, area_material] = {}
+        # The area materials assignment dictionary (key = area name, value = list of area ids in ETABS)
+        self.area_materials_assignment : DefaultDict[str, List[int]] = defaultdict(list)
         # diaphragm dictionary is used to store the rigid diaphragm members, where the key is the name
         self.diaphragms : Dict[str, List[int]] = {}
         # restraints (key = vertex id, value = list of restraint ids 1 or 0 for 6 DOFs)
