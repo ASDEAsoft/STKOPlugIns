@@ -210,6 +210,8 @@ class parser:
             if AMod != 0.0 and AMod != 1.0:
                 A *= AMod
                 shape = frame_section.shape_type.generic
+                if AMod < 0.1 or AMod > 10.0:
+                    shape_override = None
             if JMod != 0.0 and JMod != 1.0:
                 J *= JMod
                 shape = frame_section.shape_type.generic
