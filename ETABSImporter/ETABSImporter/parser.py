@@ -2,6 +2,7 @@ from ETABSImporter.document import *
 from ETABSImporter.stko_interface import stko_interface
 from collections import defaultdict
 import os
+import math
 from PyMpc import *
 
 # The parser class is used to parse the ETABS text file and build the document
@@ -30,12 +31,14 @@ class parser:
         self._parse()
     
     def _parse(self):
+        self._parse_units()
         self._parse_nodes()
         self._parse_frames()
         self._parse_areas()
         self._parse_elastic_materials()
         self._parse_area_sections()
         self._parse_area_sections_assignment()
+        self._parse_frame_sections()
         self._parse_diaphragms()
         self._parse_restraints()
         self._parse_load_patterns()
@@ -43,6 +46,15 @@ class parser:
         self._parse_joint_masses()
         self._parse_time_history_functions()
     
+    def _parse_units(self):
+        # this function parses the units and adds them to the document
+        # the units are stored in the document as a dictionary
+        for item in self.commands['* UNITS']:
+            words = tuple(i.strip() for i in item.split(','))
+            if len(words) != 3:
+                raise Exception('Invalid units line: {}, expecting 3 values'.format(item))
+            self.doc.units = words
+
     # this function parses the nodes and adds them to the document
     # the nodes are stored in the document as vertices
     def _parse_nodes(self):
@@ -74,7 +86,7 @@ class parser:
     
     # this function parses the rigid diaphragms and adds them to the document
     def _parse_diaphragms(self):
-        # todo: add the rigid diaphragm to the document only if it's rigid in ETABS (we need a flag)
+        # TODO: add the rigid diaphragm to the document only if it's rigid in ETABS (we need a flag)
         for item in self.commands['* JOINT_RIGID_DIAPHRAGMS']:
             words = item.split(',"')
             name = words[0]
@@ -153,6 +165,78 @@ class parser:
             # words[2] is not used here! wall or slab determined by the _parse_area_material command
             self.doc.area_sections_assignment[material_name].append(area_id)
 
+    # this function parses the frame sections and adds them to the document
+    def _parse_frame_sections(self):
+        for item in self.commands['* FRAME_SECTION_PROPERTIES']:
+            # this is the line, use it for parsing:
+            # Name,Material,Shape,Area,J,I33,I22,I23,As2,As3,S33Pos,S33Neg,S22Pos,S22Neg,Z33,Z22,R33,R22,CGOffset3,CGOffset2,PNAOffset3,PNAOffset2,AMod,A2Mod,A3Mod,JMod,I3Mod,I2Mod,MMod,WMod
+            # Note: some of the values are not used in the document, skipped here...
+            words = item.split(',')
+            name = words[0]
+            material = words[1]
+            _shape = words[2]
+            A = float(words[3])
+            J = float(words[4])
+            I33 = float(words[5])
+            I22 = float(words[6])
+            As2 = float(words[8])
+            As3 = float(words[9])
+            CGOffset3 = float(words[18])
+            CGOffset2 = float(words[19])
+            AMod = float(words[22])
+            A2Mod = float(words[23])
+            A3Mod = float(words[24])
+            JMod = float(words[25])
+            I3Mod = float(words[26]) # TODO: ask Kristijan. mult or div?
+            I2Mod = float(words[27])
+            # checks
+            shape_override = None
+            if _shape == 'Concrete Rectangular': # TODO: add more shapes
+                shape = frame_section.shape_type.rectangle
+                shape_override = frame_section.shape_type.rectangle
+            else:
+                shape = frame_section.shape_type.generic
+            # if some modifiers are provided (!0.0) and !1.0, then we need to convert to shape to generic
+            # the only modifiers we support at I33 and I22, and also the shear correction factors
+            if I2Mod == 0.0:
+                I2Mod = 1.0
+            if I3Mod == 0.0:
+                I3Mod = 1.0
+            if AMod != 0.0 and AMod != 1.0:
+                A *= AMod
+                shape = frame_section.shape_type.generic
+            if JMod != 0.0 and JMod != 1.0:
+                J *= JMod
+                shape = frame_section.shape_type.generic
+            # compute shear correction factors (first apply modifiers to the shear area, then compute the shear factors)
+            if A2Mod != 0.0 and A2Mod != 1.0:
+                As2 *= A2Mod
+            if A3Mod != 0.0 and A3Mod != 1.0:
+                As3 *= A3Mod
+            S2 = As2 / A
+            S3 = As3 / A
+            # final check for shape
+            if shape == frame_section.shape_type.rectangle:
+                LZ = math.sqrt(12.0*I22/A)
+                LY = A/LZ
+                print(LY, LZ, LY*LZ, LY*LZ**3/12.0, LZ*LY**3/12.0)
+                '''
+                first we compute JJ as the torsional constant as computed in STKO for a rectangular section.
+                if it doesn't match the one in ETABS, we need to convert the shape to generic.
+                '''
+                if LZ > LY:
+                    JJ = LZ*math.pow(LY,3)*(1.0/3.0-0.21*LY/LZ*(1.0-math.pow(LY,4)/(12.0*math.pow(LZ,4))))
+                else:
+                    JJ = LY*math.pow(LZ,3)*(1.0/3.0-0.21*LZ/LY*(1.0-math.pow(LZ,4)/(12.0*math.pow(LY,4))))
+                if abs(JJ - J) > 1e-3*J:
+                    # the torsional constant is not the same, we need to convert the shape to generic
+                    self.interface.send_message(f'[FRAME_SECTION_PROPERTIES {name}]: the torsional constant is not the same, converting to generic shape', mtype=stko_interface.message_type.WARNING)
+                    shape = frame_section.shape_type.generic
+            # create the frame section
+            fsec = frame_section(name, shape, material, A, I22, I33, J, S2, S3, CGOffset2, CGOffset3, I2Mod, I3Mod, shape_override=shape_override)
+            # add the frame section to the document
+            self.doc.frame_sections[name] = fsec
+            
     # this function parses the restraints and adds them to the document
     def _parse_restraints(self):
         for item in self.commands['* JOINT_RESTRAINTS']:

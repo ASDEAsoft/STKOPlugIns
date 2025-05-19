@@ -62,6 +62,7 @@ class builder:
         self._diaphram_map : Dict[str, _interaction_map_item] = {}
         self._material_map : Dict[str, Tuple[MpcProperty,MpcProperty]] = {} # value = tuple (uniaxial material, NDMaterial)
         self._area_section_map : Dict[str, MpcProperty] = {}
+        self._frame_section_map : Dict[str, MpcProperty] = {}
 
         # keep track of stko indices for different entities
         # the default linear time series
@@ -86,6 +87,7 @@ class builder:
             self._build_elastic_materials()
             self._build_area_sections()
             self._assign_area_sections()
+            self._build_frame_sections()
             self._build_conditions_restraints()
             self._build_conditions_diaphragms()
             self._build_conditions_joint_loads()
@@ -570,7 +572,7 @@ class builder:
             # set the local axes id
             area_data.geom.assign(locax_map[locax_id], area_data.subshape_id, MpcSubshapeType.Face)
 
-    # builds uniaxial or nd materials in STKO (todo: make generic material in STKO professional)
+    # builds uniaxial or nd materials in STKO (TODO: make generic material in STKO professional)
     # from the ETABS material properties
     def _build_elastic_materials(self):
         for name, mat in self.etabs_doc.elastic_materials.items():
@@ -639,6 +641,71 @@ class builder:
                     raise Exception(f'Area {area_id} not found in geometry')
                 # assign the property to the geometry
                 area_data.geom.assign(prop, area_data.subshape_id, MpcSubshapeType.Face)
+
+    # builds the frame sections in STKO
+    def _build_frame_sections(self):
+        for name, section in self.etabs_doc.frame_sections.items():
+            # obtain the material
+            mat = self.etabs_doc.elastic_materials.get(section.material, None)
+            # generate the frame section
+            prop = MpcProperty()
+            prop.id = self.stko.new_physical_property_id()
+            prop.name = f'Frame Section {name}'
+            meta = self.stko.doc.metaDataPhysicalProperty('sections.Elastic')
+            xobj = MpcXObject.createInstanceOf(meta)
+            # common properties
+            xobj.getAttribute('E').quantityScalar.value = mat.E1 if mat else 0.0
+            xobj.getAttribute('G/3D').quantityScalar.value = mat.G12 if mat else 0.0
+            xobj.getAttribute('Iyy_modifier').real = section.IyyMod
+            xobj.getAttribute('Izz_modifier').real = section.IzzMod
+            xobj.getAttribute('Y/section_offset').quantityScalar.value = section.Oy
+            xobj.getAttribute('Z/section_offset').quantityScalar.value = section.Oz
+            xobj.getAttribute('Optional').boolean = True # make it shear deformable
+            # define the section
+            if section.shape_type == frame_section.shape_type.rectangle:
+                LZ = math.sqrt(12.0*section.Iyy/section.A)
+                LY = section.A/LZ
+                stko_section = MpcBeamSection(
+                    MpcBeamSectionShapeType.Rectangle,
+                    'section_Box', 'user', self.etabs_doc.units[0],
+                    [LZ, LY],
+                )
+            else:
+                stko_section = MpcBeamSection(
+                    MpcBeamSectionShapeType.Custom,
+                    'section_Custom', 'user', self.etabs_doc.units[0],
+                    [section.A, section.Iyy, section.Izz, section.J, section.Sy, section.Sz],
+                )
+                if section.shape_override == frame_section.shape_type.rectangle:
+                    # override the section vrep
+                    LZ = math.sqrt(12.0*section.Iyy/section.A)
+                    LY = section.A/LZ
+                    cx = LY/2.0
+                    cy = LZ/2.0
+                    stko_section.extrusionData.clear()
+                    stko_section.extrusionData.addPoint(-cx, -cy)
+                    stko_section.extrusionData.addPoint(LY-cx, -cy)
+                    stko_section.extrusionData.addPoint(LY-cx, LZ-cy)
+                    stko_section.extrusionData.addPoint(-cx, LZ-cy)
+                    stko_section.extrusionData.addTriangle(0, 1, 2)
+                    stko_section.extrusionData.addTriangle(0, 2, 3)
+                    stko_section.extrusionData.addEdge([0, 1])
+                    stko_section.extrusionData.addEdge([1, 2])
+                    stko_section.extrusionData.addEdge([2, 3])
+                    stko_section.extrusionData.addEdge([3, 0])
+                    stko_section.extrusionData.addSweep(0)
+                    stko_section.extrusionData.addSweep(1)
+                    stko_section.extrusionData.addSweep(2)
+                    stko_section.extrusionData.addSweep(3)
+                    stko_section.extrusionData.applyOffset(section.Oy, section.Oz)
+            # set the section
+            xobj.getAttribute('Section').customObject = stko_section
+            # set the xobject
+            prop.XObject = xobj
+            self.stko.add_physical_property(prop)
+            prop.commitXObjectChanges()
+            # add the section to the map
+            self._frame_section_map[name] = prop
 
     # builds the conditions for restraints in STKO
     def _build_conditions_restraints(self):

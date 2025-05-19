@@ -57,6 +57,35 @@ class area_section:
     def __repr__(self):
         return self.__str__()
 
+# The frame section class is used to store the properties of a frame material
+class frame_section:
+    class shape_type:
+        generic = 0
+        rectangle = 1
+    def __init__(self, name:str, shape:shape_type, material:str,
+                 A:float, Iyy:float, Izz:float, J:float, Sy:float, Sz:float,
+                 Oy:float, Oz:float,
+                 IyyMod:float, IzzMod:float,
+                 shape_override:shape_type=None):
+        self.name = name
+        self.shape = shape
+        self.material = material
+        self.A = A # cross-sectional area
+        self.Iyy = Iyy # moment of inertia about y-axis
+        self.Izz = Izz # moment of inertia about z-axis
+        self.J = J # torsional constant
+        self.Sy = Sy # shear correction factor in the y-axis
+        self.Sz = Sz # shear correction factor in the z-axis
+        self.Oy = Oy # offset in the y-axis
+        self.Oz = Oz # offset in the z-axis
+        self.IyyMod = IyyMod # modified moment of inertia about y-axis
+        self.IzzMod = IzzMod # modified moment of inertia about z-axis
+        self.shape_override = shape_override # used to override the shape type for custom shapes
+    def __str__(self):
+        return f'{self.name} {self.shape} {self.material} {self.A} {self.Iyy} {self.Izz} {self.J} {self.Sy} {self.Sz} {self.Oy} {self.Oz} {self.IyyMod} {self.IzzMod}'
+    def __repr__(self):
+        return self.__str__()
+
 # a load pattern in etabs (Name,IsAuto,Type,SelfWtMult)
 class load_pattern:
     def __init__(self, name:str, is_auto:bool, type:str, self_wt_mult:float):
@@ -110,6 +139,9 @@ class document:
 
     # The document class is used to store the model data
     def __init__(self):
+        # units
+        # units for length, force, temperature
+        self.units : Tuple[str,str,str] = ('m', 'N', 'C')
         # The vertices dictionary is used to store the coordinates of the points in 3D space
         self.vertices : Dict[int, Math.vec3] = {}
         # The frames dictionary is used to store the connectivity of the frame members
@@ -122,6 +154,9 @@ class document:
         self.area_sections : Dict[str, area_section] = {}
         # The area section assignment dictionary (key = area section name, value = list of area ids in ETABS)
         self.area_sections_assignment : DefaultDict[str, List[int]] = defaultdict(list)
+        # The frame section dictionary is used to store the properties of the frame materials
+        self.frame_sections : Dict[str, frame_section] = {}
+        # TODO: add frame section assignment dictionary (key = frame section name, value = list of frame ids in ETABS)
         # diaphragm dictionary is used to store the rigid diaphragm members, where the key is the name
         self.diaphragms : Dict[str, List[int]] = {}
         # restraints (key = vertex id, value = list of restraint ids 1 or 0 for 6 DOFs)
