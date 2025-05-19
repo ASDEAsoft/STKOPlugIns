@@ -90,12 +90,14 @@ class builder:
             self._assign_area_sections()
             self._build_frame_sections()
             self._build_frame_nonlinear_hinges()
+            self._build_frame_sections_assignment()
             self._build_conditions_restraints()
             self._build_conditions_diaphragms()
             self._build_conditions_joint_loads()
             self._build_conditions_joint_masses()
             self._build_analysis_step_constraint_pattern()
             self._build_analysis_step_load_patterns()
+            self._build_finalization()
         except Exception as e:
             raise
         finally:
@@ -730,6 +732,92 @@ class builder:
             # add the hinge to the map
             self._frame_nonlinear_hinge_map[name] = prop
 
+    #○ build the frame sections assignment in STKO
+    def _build_frame_sections_assignment(self):
+        '''
+        Note: if a frame has only elastic properties, we can make an elastic beam element 
+        and assign the elastic section directly to the frame.
+        '''
+        # create a map of tuples (int, int), where the first is the frame section and the second the hinge (that can be none)
+        combined_map : Dict[Tuple[int, int], MpcProperty] = {}
+        # the elastic beam element and the hinged beam (to be created only once)
+        beam_elements : List[MpcElementProperty] = [None, None]
+        def _get_elastic_beam_elem() -> MpcElementProperty:
+            if beam_elements[0] is None:
+                # create the elastic beam element
+                prop = MpcElementProperty()
+                prop.id = self.stko.new_element_property_id()
+                prop.name = 'Elastic Beam Element'
+                meta = self.stko.doc.metaDataElementProperty('beam_column_elements.elasticBeamColumn')
+                xobj = MpcXObject.createInstanceOf(meta)
+                # TODO: set kinematics!
+                prop.XObject = xobj
+                self.stko.add_element_property(prop)
+                prop.commitXObjectChanges()
+                beam_elements[0] = prop
+            return beam_elements[0]
+        def _get_hinged_beam_elem() -> MpcElementProperty:
+            if beam_elements[1] is None:
+                # create the hinged beam element
+                prop = MpcElementProperty()
+                prop.id = self.stko.new_element_property_id()
+                prop.name = 'Hinged Beam Element'
+                meta = self.stko.doc.metaDataElementProperty('special_purpose.BeamWithShearHinge')
+                xobj = MpcXObject.createInstanceOf(meta)
+                xobj.getAttribute('Beam Element').index = _get_elastic_beam_elem().id
+                prop.XObject = xobj
+                self.stko.add_element_property(prop)
+                prop.commitXObjectChanges()
+                beam_elements[1] = prop
+            return beam_elements[1]
+        # process each frame element
+        for frame_id, frame in self.etabs_doc.frames.items():
+            # get the elastic section (skip if not found)
+            section_name = self.etabs_doc.frame_sections_assignment_inverse.get(frame_id, None)
+            if section_name is None:
+                continue
+            section_prop = self._frame_section_map.get(section_name, None)
+            if section_prop is None:
+                raise Exception(f'Frame section {section_name} not found in STKO')
+            # get the hinge if available
+            hinge_name = self.etabs_doc.frame_nonlinear_hinges_assignment_inverse.get(frame_id, None)
+            # geometry and subshape id
+            frame_data = self._frame_map.get(frame_id, None)
+            if frame_data is None:
+                raise Exception(f'Frame {frame_id} not found in geometry')
+            # if the hinge is none, use the elastic section
+            if hinge_name is None:
+                # assign the section to the geometry
+                frame_data.geom.assign(section_prop, frame_data.subshape_id, MpcSubshapeType.Edge)
+                frame_data.geom.assign(_get_elastic_beam_elem(), frame_data.subshape_id, MpcSubshapeType.Edge)
+            else:
+                # get the hinge property or create a new one
+                hinge_prop = self._frame_nonlinear_hinge_map.get(hinge_name, None)
+                if hinge_prop is None:
+                    raise Exception(f'Frame hinge {hinge_name} not found in STKO')
+                combined_key = (section_prop.id, hinge_prop.id)
+                combined_prop = combined_map.get(combined_key, None)
+                if combined_prop is None:
+                    # make the combined physical property
+                    prop = MpcProperty()
+                    prop.id = self.stko.new_physical_property_id()
+                    prop.name = f'Frame Section {section_name} + Hinge {hinge_name}'
+                    meta = self.stko.doc.metaDataPhysicalProperty('special_purpose.BeamWithShearHingeProperty')
+                    xobj = MpcXObject.createInstanceOf(meta)
+                    xobj.getAttribute('Beam Property').index = section_prop.id
+                    xobj.getAttribute('Vy Material').index = hinge_prop.id
+                    xobj.getAttribute('Vz Material').index = hinge_prop.id # TODO: same or not in both directions?
+                    xobj.getAttribute('K').real = self.etabs_doc.penalty_hinges
+                    prop.XObject = xobj
+                    self.stko.add_physical_property(prop)
+                    prop.commitXObjectChanges()
+                    combined_map[combined_key] = prop
+                    combined_prop = prop
+                # assign the combined property to the geometry
+                frame_data.geom.assign(combined_prop, frame_data.subshape_id, MpcSubshapeType.Edge)
+                # assign the hinged beam element to the geometry
+                frame_data.geom.assign(_get_hinged_beam_elem(), frame_data.subshape_id, MpcSubshapeType.Edge)
+
     # builds the conditions for restraints in STKO
     def _build_conditions_restraints(self):
         # group restraints by type
@@ -954,3 +1042,7 @@ class builder:
             # add the analysis step to the document
             self.stko.add_analysis_step(step)
             step.commitXObjectChanges()
+    
+    # do some extra stuff to finalize the import
+    def _build_finalization(self):
+        self.stko.assign_custom_colors()

@@ -51,6 +51,10 @@ class stko_interface:
     def new_physical_property_id(self) -> int:
         return self.doc.physicalProperties.getlastkey(0) + 1
 
+    # the the id of the last element property in the document + 1
+    def new_element_property_id(self) -> int:
+        return self.doc.elementProperties.getlastkey(0) + 1
+
     # get the condition id of the last condition in the document + 1
     def new_condition_id(self) -> int:
         return self.doc.conditions.getlastkey(0) + 1
@@ -88,9 +92,18 @@ class stko_interface:
         self.doc.dirty = True
         App.processEvents()
 
+    # adds a new physical property to the STKO document
     def add_physical_property(self, prop : MpcProperty):
         # adds a new physical property to the STKO document
         self.doc.addPhysicalProperty(prop)
+        self.doc.commitChanges()
+        self.doc.dirty = True
+        App.processEvents()
+    
+    # adds a new element property to the STKO document
+    def add_element_property(self, prop : MpcElementProperty):
+        # adds a new element property to the STKO document
+        self.doc.addElementProperty(prop)
         self.doc.commitChanges()
         self.doc.dirty = True
         App.processEvents()
@@ -108,6 +121,11 @@ class stko_interface:
         self.doc.commitChanges()
         self.doc.dirty = True
         App.processEvents()
+
+    # assign custom colors
+    def assign_custom_colors(self):
+        # coloring
+        self.doc.randomizeMaterialColors()
 
     # regenerate the document
     def regenerate(self):

@@ -283,7 +283,7 @@ class parser:
 
     # this function parses the frame nonlinear hinges assignments and adds them to the document
     def _parse_frame_nonlinear_hinges_assignment(self):
-        for item in self.commands['* FRAME_NONLINEAR_HINGE_PROPERTIES_ASSIGNMENT']:
+        for item in self.commands['* FRAME_NONLINEAR_HINGE_ASSIGNMENT']:
             words = item.split(',')
             frame_id = int(words[0])
             hinge_name = words[1]
