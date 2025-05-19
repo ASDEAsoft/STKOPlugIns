@@ -322,3 +322,5 @@ class document:
             Kmax = max(Kmax, Kaxial, Kv2, Kv3, Km2, Km3)
         # penalty for hinge frame elements
         self.penalty_hinges = 10.0 ** (math.ceil(math.log10(Kmax)) + 2)
+        if self.penalty_hinges == 0.0:
+            self.penalty_hinges = 1.0e12

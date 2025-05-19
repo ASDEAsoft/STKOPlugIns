@@ -719,6 +719,8 @@ class builder:
             meta = self.stko.doc.metaDataPhysicalProperty('materials.uniaxial.HystereticSM')
             xobj = MpcXObject.createInstanceOf(meta)
             # common properties
+            if hinge.D[0] == 0.0:
+                hinge.D[0] = hinge.F[0] / self.etabs_doc.penalty_hinges
             xobj.getAttribute('ep').quantityVector.value = hinge.D
             xobj.getAttribute('sp').quantityVector.value = hinge.F
             # set the xobject
