@@ -170,6 +170,8 @@ class document:
         self.area_sections : Dict[str, area_section] = {}
         # The area section assignment dictionary (key = area section name, value = list of area ids in ETABS)
         self.area_sections_assignment : DefaultDict[str, List[int]] = defaultdict(list)
+        # The inverse of the area section assignment dictionary (key = area id, value = area section name)
+        self.area_sections_assignment_inverse : Dict[int, str] = {}
         # The frame section dictionary is used to store the properties of the frame materials
         self.frame_sections : Dict[str, frame_section] = {}
         # The frame nonlinear hinge dictionary is used to store the properties of the frame nonlinear hinges

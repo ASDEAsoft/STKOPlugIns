@@ -165,6 +165,8 @@ class parser:
             material_name = words[1]
             # words[2] is not used here! wall or slab determined by the _parse_area_material command
             self.doc.area_sections_assignment[material_name].append(area_id)
+            # fill the inverse map
+            self.doc.area_sections_assignment_inverse[area_id] = material_name
 
     # this function parses the frame sections and adds them to the document
     def _parse_frame_sections(self):
