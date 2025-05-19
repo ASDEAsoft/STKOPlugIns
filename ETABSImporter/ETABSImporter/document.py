@@ -174,9 +174,12 @@ class document:
         self.area_sections_assignment_inverse : Dict[int, str] = {}
         # The frame section dictionary is used to store the properties of the frame materials
         self.frame_sections : Dict[str, frame_section] = {}
+        # The frame section assignment dictionary (key = frame section name, value = list of frame ids in ETABS)
+        self.frame_sections_assignment : DefaultDict[str, List[int]] = defaultdict(list)
+        # The inverse of the frame section assignment dictionary (key = frame id, value = frame section name)
+        self.frame_sections_assignment_inverse : Dict[int, str] = {}
         # The frame nonlinear hinge dictionary is used to store the properties of the frame nonlinear hinges
         self.frame_nonlinear_hinges : Dict[str, frame_nonlinear_hinge] = {}
-        # TODO: add frame section+hinge assignment dictionary (key = frame section name, value = list of frame ids in ETABS)
         # diaphragm dictionary is used to store the rigid diaphragm members, where the key is the name
         self.diaphragms : Dict[str, List[int]] = {}
         # restraints (key = vertex id, value = list of restraint ids 1 or 0 for 6 DOFs)

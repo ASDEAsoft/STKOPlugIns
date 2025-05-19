@@ -239,6 +239,16 @@ class parser:
             # add the frame section to the document
             self.doc.frame_sections[name] = fsec
 
+    # this function parses the frame section assignments and adds them to the document
+    def _parse_frame_sections_assignment(self):
+        for item in self.commands['* FRAME_SECTION_PROPERTIES_ASSIGNMENT']:
+            words = item.split(',')
+            frame_id = int(words[0])
+            section_name = words[1]
+            self.doc.frame_sections_assignment[section_name].append(frame_id)
+            # fill the inverse map
+            self.doc.frame_sections_assignment_inverse[frame_id] = section_name
+
     # this function parses the frame nonlinear hinges and adds them to the document
     def _parse_frame_nonlinear_hinges(self):
         for item in self.commands['* FRAME_NONLINEAR_HINGE_PROPERTIES_V2']:
