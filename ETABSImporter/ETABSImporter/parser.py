@@ -39,7 +39,9 @@ class parser:
         self._parse_area_sections()
         self._parse_area_sections_assignment()
         self._parse_frame_sections()
+        self._parse_frame_sections_assignment()
         self._parse_frame_nonlinear_hinges()
+        self._parse_frame_nonlinear_hinges_assignment()
         self._parse_diaphragms()
         self._parse_restraints()
         self._parse_load_patterns()
@@ -278,6 +280,18 @@ class parser:
                     raise Exception('Invalid (must be 2 <= N <= 7) number of values for frame nonlinear hinge {}: {}'.format(name, num_values))
             # add
             self.doc.frame_nonlinear_hinges[name] = frame_nonlinear_hinge(name, D, F)
+
+    # this function parses the frame nonlinear hinges assignments and adds them to the document
+    def _parse_frame_nonlinear_hinges_assignment(self):
+        for item in self.commands['* FRAME_NONLINEAR_HINGE_PROPERTIES_ASSIGNMENT']:
+            words = item.split(',')
+            frame_id = int(words[0])
+            hinge_name = words[1]
+            # words[2] is not used here! TODO: use relative distance once multi hinge are supported
+            # add the hinge to the document
+            self.doc.frame_nonlinear_hinges_assignment[hinge_name].append(frame_id)
+            # fill the inverse map
+            self.doc.frame_nonlinear_hinges_assignment_inverse[frame_id] = hinge_name
 
     # this function parses the restraints and adds them to the document
     def _parse_restraints(self):

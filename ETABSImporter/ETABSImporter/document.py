@@ -180,6 +180,11 @@ class document:
         self.frame_sections_assignment_inverse : Dict[int, str] = {}
         # The frame nonlinear hinge dictionary is used to store the properties of the frame nonlinear hinges
         self.frame_nonlinear_hinges : Dict[str, frame_nonlinear_hinge] = {}
+        # TODO: this works only for: 1 hinge per frame, assumed at reldist = 0.5 and converted to BeamWithShearHinge!
+        # The frame nonlinear hinge assignment dictionary (key = frame nonlinear hinge name, value = list of frame ids in ETABS)
+        self.frame_nonlinear_hinges_assignment : DefaultDict[str, List[int]] = defaultdict(list)
+        # The inverse of the frame nonlinear hinge assignment dictionary (key = frame id, value = frame nonlinear hinge name)
+        self.frame_nonlinear_hinges_assignment_inverse : Dict[int, str] = {}
         # diaphragm dictionary is used to store the rigid diaphragm members, where the key is the name
         self.diaphragms : Dict[str, List[int]] = {}
         # restraints (key = vertex id, value = list of restraint ids 1 or 0 for 6 DOFs)
