@@ -39,6 +39,7 @@ class parser:
         self._parse_area_sections()
         self._parse_area_sections_assignment()
         self._parse_frame_sections()
+        self._parse_frame_nonlinear_hinges()
         self._parse_diaphragms()
         self._parse_restraints()
         self._parse_load_patterns()
@@ -219,7 +220,6 @@ class parser:
             if shape == frame_section.shape_type.rectangle:
                 LZ = math.sqrt(12.0*I22/A)
                 LY = A/LZ
-                print(LY, LZ, LY*LZ, LY*LZ**3/12.0, LZ*LY**3/12.0)
                 '''
                 first we compute JJ as the torsional constant as computed in STKO for a rectangular section.
                 if it doesn't match the one in ETABS, we need to convert the shape to generic.
@@ -236,14 +236,43 @@ class parser:
             fsec = frame_section(name, shape, material, A, I22, I33, J, S2, S3, CGOffset2, CGOffset3, I2Mod, I3Mod, shape_override=shape_override)
             # add the frame section to the document
             self.doc.frame_sections[name] = fsec
-            
+
+    # this function parses the frame nonlinear hinges and adds them to the document
+    def _parse_frame_nonlinear_hinges(self):
+        for item in self.commands['* FRAME_NONLINEAR_HINGE_PROPERTIES_V2']:
+            words = [i for i in item.split(',') if i] # may contain empty strings
+            name = words[0]
+            # next values are a list of displacements and a list of forces. they must have the same length
+            # and their length must be >= 2 and <= 7
+            num_values = len(words) - 1
+            # must be even
+            if num_values % 2 != 0:
+                raise Exception('Invalid (odd) number of values for frame nonlinear hinge {}: {}'.format(name, num_values))
+            num_values //= 2
+            if num_values < 2 or num_values > 7:
+                raise Exception('Invalid (must be 2 <= N <= 7) number of values for frame nonlinear hinge {}: {}'.format(name, num_values))
+            # read the forces (num_values)
+            F = [float(words[i]) for i in range(1, num_values + 1)]
+            # read the displacements (num_values)
+            D = [float(words[i]) for i in range(num_values + 1, num_values * 2 + 1)]
+            # some processing
+            if F[0] <= 0.0:
+                # skip the first value, the material in STKO assumed the first point not at origin
+                F = F[1:]
+                D = D[1:]
+                self.interface.send_message(f'[FRAME_NONLINEAR_HINGE_PROPERTIES_V2 {name}]: the first value is not at origin, skipping it', mtype=stko_interface.message_type.WARNING)
+                num_values -= 1
+                if num_values < 2 or num_values > 7:
+                    raise Exception('Invalid (must be 2 <= N <= 7) number of values for frame nonlinear hinge {}: {}'.format(name, num_values))
+            # add
+            self.doc.frame_nonlinear_hinges[name] = frame_nonlinear_hinge(name, D, F)
+
     # this function parses the restraints and adds them to the document
     def _parse_restraints(self):
         for item in self.commands['* JOINT_RESTRAINTS']:
             words = item.split(',')
             id = int(words[0])
             restraints = tuple([int(words[i]=='Yes') for i in range(1, 7)])
-            print(id, restraints)
             self.doc.restraints[id] = restraints
     
     # this function parses the load patterns and adds them to the document

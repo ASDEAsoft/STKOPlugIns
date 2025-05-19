@@ -86,6 +86,22 @@ class frame_section:
     def __repr__(self):
         return self.__str__()
 
+# The frame nonlinear hinge class is used to store the properties of a frame nonlinear hinge
+class frame_nonlinear_hinge:
+    def __init__(self, name:str, D:List[float], F:List[float]):
+        self.name = name
+        self.D = D
+        self.F = F
+        N = len(self.D)
+        if N != len(self.F):
+            raise ValueError('D and F must have the same number of values')
+        if N < 2 or N > 7:
+            raise ValueError('D and F must have between 2 and 7 values')
+    def __str__(self):
+        return '{} {} {}'.format(self.name, self.D, self.F)
+    def __repr__(self):
+        return self.__str__()
+
 # a load pattern in etabs (Name,IsAuto,Type,SelfWtMult)
 class load_pattern:
     def __init__(self, name:str, is_auto:bool, type:str, self_wt_mult:float):
@@ -156,7 +172,9 @@ class document:
         self.area_sections_assignment : DefaultDict[str, List[int]] = defaultdict(list)
         # The frame section dictionary is used to store the properties of the frame materials
         self.frame_sections : Dict[str, frame_section] = {}
-        # TODO: add frame section assignment dictionary (key = frame section name, value = list of frame ids in ETABS)
+        # The frame nonlinear hinge dictionary is used to store the properties of the frame nonlinear hinges
+        self.frame_nonlinear_hinges : Dict[str, frame_nonlinear_hinge] = {}
+        # TODO: add frame section+hinge assignment dictionary (key = frame section name, value = list of frame ids in ETABS)
         # diaphragm dictionary is used to store the rigid diaphragm members, where the key is the name
         self.diaphragms : Dict[str, List[int]] = {}
         # restraints (key = vertex id, value = list of restraint ids 1 or 0 for 6 DOFs)
@@ -260,7 +278,6 @@ class document:
         self.joint_masses = {}
         for k,v in _joint_masses.items():
             self.joint_masses[old_to_new[k]] = v
-
 
 
     

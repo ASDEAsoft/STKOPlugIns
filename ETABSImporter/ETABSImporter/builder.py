@@ -63,6 +63,7 @@ class builder:
         self._material_map : Dict[str, Tuple[MpcProperty,MpcProperty]] = {} # value = tuple (uniaxial material, NDMaterial)
         self._area_section_map : Dict[str, MpcProperty] = {}
         self._frame_section_map : Dict[str, MpcProperty] = {}
+        self._frame_nonlinear_hinge_map : Dict[str, MpcProperty] = {}
 
         # keep track of stko indices for different entities
         # the default linear time series
@@ -88,6 +89,7 @@ class builder:
             self._build_area_sections()
             self._assign_area_sections()
             self._build_frame_sections()
+            self._build_frame_nonlinear_hinges()
             self._build_conditions_restraints()
             self._build_conditions_diaphragms()
             self._build_conditions_joint_loads()
@@ -706,6 +708,25 @@ class builder:
             prop.commitXObjectChanges()
             # add the section to the map
             self._frame_section_map[name] = prop
+
+    # build the frame nonlinear hinges in STKO
+    def _build_frame_nonlinear_hinges(self):
+        for name, hinge in self.etabs_doc.frame_nonlinear_hinges.items():
+            # generate the property
+            prop = MpcProperty()
+            prop.id = self.stko.new_physical_property_id()
+            prop.name = f'Frame Hinge {name}'
+            meta = self.stko.doc.metaDataPhysicalProperty('materials.uniaxial.HystereticSM')
+            xobj = MpcXObject.createInstanceOf(meta)
+            # common properties
+            xobj.getAttribute('ep').quantityVector.value = hinge.D
+            xobj.getAttribute('sp').quantityVector.value = hinge.F
+            # set the xobject
+            prop.XObject = xobj
+            self.stko.add_physical_property(prop)
+            prop.commitXObjectChanges()
+            # add the hinge to the map
+            self._frame_nonlinear_hinge_map[name] = prop
 
     # builds the conditions for restraints in STKO
     def _build_conditions_restraints(self):
