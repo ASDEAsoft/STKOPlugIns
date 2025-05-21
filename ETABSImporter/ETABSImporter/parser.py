@@ -172,6 +172,17 @@ class parser:
 
     # this function parses the frame sections and adds them to the document
     def _parse_frame_sections(self):
+        # first parse shape information if available
+        # key is the name of the frame section, value is a tuple of shape type and shape info data
+        all_shape_info : Dict[str, Tuple[frame_section.shape_type, List[float]]] = {}
+        # rectangular
+        for item in self.commands['* FRAME_SECTION_DIMENSIONS_RECTANGULAR']:
+            words = item.split(',')
+            name = words[0]
+            values = [float(i) for i in words[1:]]
+            all_shape_info[name] = (frame_section.shape_type.rectangle, values)
+        # TODO: add other shapes
+        # now parse the frame sections
         for item in self.commands['* FRAME_SECTION_PROPERTIES']:
             # this is the line, use it for parsing:
             # Name,Material,Shape,Area,J,I33,I22,I23,As2,As3,S33Pos,S33Neg,S22Pos,S22Neg,Z33,Z22,R33,R22,CGOffset3,CGOffset2,PNAOffset3,PNAOffset2,AMod,A2Mod,A3Mod,JMod,I3Mod,I2Mod,MMod,WMod
@@ -192,54 +203,20 @@ class parser:
             A2Mod = float(words[23])
             A3Mod = float(words[24])
             JMod = float(words[25])
-            I3Mod = float(words[26]) # TODO: ask Kristijan. mult or div?
+            I3Mod = float(words[26])
             I2Mod = float(words[27])
-            # checks
-            shape_override = None
-            if _shape == 'Concrete Rectangular': # TODO: add more shapes
-                shape = frame_section.shape_type.rectangle
-                shape_override = frame_section.shape_type.rectangle
-            else:
-                shape = frame_section.shape_type.generic
-            # if some modifiers are provided (!0.0) and !1.0, then we need to convert to shape to generic
-            # the only modifiers we support at I33 and I22, and also the shear correction factors
-            if I2Mod == 0.0:
-                I2Mod = 1.0
-            if I3Mod == 0.0:
-                I3Mod = 1.0
-            if AMod != 0.0 and AMod != 1.0:
-                A *= AMod
-                shape = frame_section.shape_type.generic
-                if AMod < 0.1 or AMod > 10.0:
-                    shape_override = None
-            if JMod != 0.0 and JMod != 1.0:
-                J *= JMod
-                shape = frame_section.shape_type.generic
-            # compute shear correction factors (first apply modifiers to the shear area, then compute the shear factors)
-            if A2Mod != 0.0 and A2Mod != 1.0:
-                As2 *= A2Mod
-            if A3Mod != 0.0 and A3Mod != 1.0:
-                As3 *= A3Mod
-            S2 = As2 / A
-            S3 = As3 / A
-            # final check for shape
-            if shape == frame_section.shape_type.rectangle:
-                LZ = math.sqrt(12.0*I22/A)
-                LY = A/LZ
-                '''
-                first we compute JJ as the torsional constant as computed in STKO for a rectangular section.
-                if it doesn't match the one in ETABS, we need to convert the shape to generic.
-                '''
-                if LZ > LY:
-                    JJ = LZ*math.pow(LY,3)*(1.0/3.0-0.21*LY/LZ*(1.0-math.pow(LY,4)/(12.0*math.pow(LZ,4))))
-                else:
-                    JJ = LY*math.pow(LZ,3)*(1.0/3.0-0.21*LZ/LY*(1.0-math.pow(LZ,4)/(12.0*math.pow(LY,4))))
-                if abs(JJ - J) > 1e-3*J:
-                    # the torsional constant is not the same, we need to convert the shape to generic
-                    self.interface.send_message(f'[FRAME_SECTION_PROPERTIES {name}]: the torsional constant is not the same, converting to generic shape', mtype=stko_interface.message_type.WARNING)
-                    shape = frame_section.shape_type.generic
+            # check shape
+            # TODO: wait for FRAME_SECTION_DIMENSIONS_RECTANGULAR
+            shape = frame_section.shape_type.generic
+            shape_info = None
+            shape_data = all_shape_info.get(name, None)
+            if shape_data is not None:
+                shape, shape_info = shape_data
+            # compute shear correction factors
+            S2 = As2 / A if A > 0.0 else 0.0
+            S3 = As3 / A if A > 0.0 else 0.0
             # create the frame section
-            fsec = frame_section(name, shape, material, A, I22, I33, J, S2, S3, CGOffset2, CGOffset3, I2Mod, I3Mod, shape_override=shape_override)
+            fsec = frame_section(name, shape, material, A, I22, I33, J, S2, S3, CGOffset2, CGOffset3, AMod, A2Mod, A3Mod, I2Mod, I3Mod, JMod, shape_info=shape_info)
             # add the frame section to the document
             self.doc.frame_sections[name] = fsec
 

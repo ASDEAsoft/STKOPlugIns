@@ -66,8 +66,8 @@ class frame_section:
     def __init__(self, name:str, shape:shape_type, material:str,
                  A:float, Iyy:float, Izz:float, J:float, Sy:float, Sz:float,
                  Oy:float, Oz:float,
-                 IyyMod:float, IzzMod:float,
-                 shape_override:shape_type=None):
+                 AMod:float, AsyMod:float, AszMod:float, IyyMod:float, IzzMod:float, JMod:float,
+                 shape_info:List[float]=None):
         self.name = name
         self.shape = shape
         self.material = material
@@ -79,11 +79,15 @@ class frame_section:
         self.Sz = Sz # shear correction factor in the z-axis
         self.Oy = Oy # offset in the y-axis
         self.Oz = Oz # offset in the z-axis
-        self.IyyMod = IyyMod # modified moment of inertia about y-axis
-        self.IzzMod = IzzMod # modified moment of inertia about z-axis
-        self.shape_override = shape_override # used to override the shape type for custom shapes
+        self.AMod = AMod # modifier for the cross-sectional area
+        self.AsyMod = AsyMod # modifier for shear area in the y-axis
+        self.AszMod = AszMod # modifier for shear area in the z-axis
+        self.IyyMod = IyyMod # modifier for moment of inertia about y-axis
+        self.IzzMod = IzzMod # modifier for moment of inertia about z-axis
+        self.JMod = JMod # modifier for torsional constant
+        self.shape_info = shape_info # additional information about the shape (depending on the shape type)
     def __str__(self):
-        return f'{self.name} {self.shape} {self.material} {self.A} {self.Iyy} {self.Izz} {self.J} {self.Sy} {self.Sz} {self.Oy} {self.Oz} {self.IyyMod} {self.IzzMod}'
+        return f'{self.name} {self.shape} {self.material} {self.A} {self.Iyy} {self.Izz} {self.J} {self.Sy} {self.Sz} {self.Oy} {self.Oz} {self.AMod} {self.AsyMod} {self.AszMod} {self.IyyMod} {self.IzzMod} {self.JMod}'
     def __repr__(self):
         return self.__str__()
 
