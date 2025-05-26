@@ -36,6 +36,7 @@ class parser:
         self._parse_frames()
         self._parse_areas()
         self._parse_elastic_materials()
+        self._parse_nonlinear_materials()
         self._parse_area_sections()
         self._parse_area_sections_assignment()
         self._parse_frame_sections()
@@ -116,6 +117,48 @@ class parser:
             # add the material to the document
             self.doc.elastic_materials[name] = elastic_material(name, density_type, unit_weight, unit_mass, e1, g12, u12, a1)
 
+    # this function parses the nonlinear materials and adds it to the document as nonlinear_material
+    def _parse_nonlinear_materials(self):
+        # store a temporary dictionary of nonlinear materials with point,strain,stress
+        # then we will order the points
+        temp : Dict[Tuple[str,str], List[Tuple[float,float]]] = {}
+        for item in self.commands['* MATERIALS_NONLINEAR_PROPERTIES']:
+            words = item.split(',')
+            name = words[0]
+            mat_type = words[1]
+            key = (name, mat_type)
+            strain = float(words[3])
+            stress = float(words[4])
+            item = temp.get(key, None)
+            if item is None:
+                item = []
+                temp[key] = item
+            item.append((strain, stress))
+        # now we have to:
+        # 2. split them into positive and negative (and make them all positive)
+        # 3. sort them
+        # 3. create the nonlinear material
+        # 4. add it to the document
+        for (name, mat_type), points in temp.items():
+            # split the points into positive and negative
+            pos_points = []
+            neg_points = []
+            for strain, stress in points:
+                if strain == 0.0:
+                    # skip the zero point
+                    continue
+                if strain > 0.0:
+                    pos_points.append((strain, stress))
+                else:
+                    neg_points.append((-strain, -stress)) # make them positive
+            # sort the points
+            pos_points.sort(key=lambda x: x[0])
+            neg_points.sort(key=lambda x: x[0])
+            # create the nonlinear material
+            nmat = nonlinear_material(name, mat_type, pos_points, neg_points)
+            # add it to the document
+            self.doc.nonlinear_materials[name] = nmat
+
     # this function parses the area section and adds it to the document as area_material     
     def _parse_area_sections(self):
         for is_wall in (False, True):
@@ -175,6 +218,7 @@ class parser:
         # first parse shape information if available
         # key is the name of the frame section, value is a tuple of shape type and shape info data
         all_shape_info : Dict[str, Tuple[frame_section.shape_type, List[float]]] = {}
+        # TODO: we assume t2,t3 but ETABS has a bug on it
         # rectangular
         for item in self.commands['* FRAME_SECTION_DIMENSIONS_RECTANGULAR']:
             words = item.split(',')

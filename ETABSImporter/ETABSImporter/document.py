@@ -43,6 +43,18 @@ class elastic_material:
     def __repr__(self):
         return self.__str__()
 
+# The nonlinear material class is used to store the properties of a nonlinear material
+class nonlinear_material:
+    def __init__(self, name:str, mat_type:str, pos_env:List[Tuple[float,float]], neg_env:List[Tuple[float,float]]):
+        self.name = name
+        self.mat_type = mat_type
+        self.pos_env = pos_env
+        self.neg_env = neg_env
+    def __str__(self):
+        return '{} {} {} {}'.format(self.name, self.mat_type, self.pos_env, self.neg_env)
+    def __repr__(self):
+        return self.__str__()
+
 # The area section class is used to store the properties of an area material
 class area_section:
     def __init__(self, name:str, type:str, material:str, thickness:float, Fmod:float, Mmod:float, is_wall:bool=False):
@@ -171,6 +183,8 @@ class document:
         self.areas : Dict[int, area] = {}
         # The elastic materials dictionary is used to store the properties of the elastic materials
         self.elastic_materials : Dict[str, elastic_material] = {}
+        # The nonlinear materials dictionary is used to store the properties of the nonlinear materials
+        self.nonlinear_materials : Dict[str, nonlinear_material] = {}
         # The area section dictionary is used to store the properties of the area materials
         self.area_sections : Dict[str, area_section] = {}
         # The area section assignment dictionary (key = area section name, value = list of area ids in ETABS)
