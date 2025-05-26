@@ -159,10 +159,46 @@ class parser:
             # add it to the document
             self.doc.nonlinear_materials[name] = nmat
 
+    # called by the _parse_area_sections function if the MVLEM Notes is used
+    def _parse_area_sections_mvlem(self, asec:area_section, notes:str):
+        '''
+        typical command:
+        MVLEM 4 -thick 36*4 -width 9*4 -rho 0.0145*4 -matConcrete Conc_for_Walls*4 -matSteel Steel_for_Walls*4 -ShearK 1684540.78005847
+        '''
+        import re
+        # first find all * chars, and if found, remove all spaces before and after it using regex
+        notes = re.sub(r'\s*\*\s*', '*', notes)
+        # now in a pattern like A*N, for each * found, get the string before (A) and after (N) it until a whitespace or end of string.
+        # then replace the A*N with A A A ... A (N times)
+        notes = re.sub(r'([^\s*]+)\*(\d+)', lambda m: ' '.join([m.group(1)] * int(m.group(2))), notes)
+        # now we can split the notes by whitespaces (skipping empty strings)
+        words = [i.strip() for i in notes.split() if i.strip()]
+        nfibers = int(words[1])
+        # each keyword starts with a dash.
+        # let's create a dictionary with key = keyword (with dash) and value = list of strings found after that keyword
+        keyword_values = {}
+        keyword_values['type'] = words[0]  # the first word is the type, e.g. MVLEM
+        keyword_values['nfibers'] = nfibers  # the number of fibers is the second word
+        current_keyword = None
+        for word in words[2:]:
+            if word.startswith('-'):
+                current_keyword = word
+            elif current_keyword is not None:
+                if current_keyword in ('-thick', '-width', '-rho', '-ShearK'):
+                    word = float(word)
+                values = keyword_values.get(current_keyword, None)
+                if values is None:
+                    values = []
+                    keyword_values[current_keyword] = values
+                values.append(word)
+        # add it to the area section
+        asec.conversion_info = keyword_values
+
     # this function parses the area section and adds it to the document as area_material     
     def _parse_area_sections(self):
         for is_wall in (False, True):
-            for item in self.commands['* AREA_SECTION_PROPERTIES_{}'.format('WALL' if is_wall else 'SLAB')]:
+            cmd_name = 'AREA_SECTION_PROPERTIES_{}'.format('WALL' if is_wall else 'SLAB')
+            for item in self.commands[f'* {cmd_name}']:
                 words = item.split(',')
                 name = words[0]
                 type = words[1]
@@ -201,6 +237,16 @@ class parser:
                 asec = area_section(name, type, material, thickness, f11, m11, is_wall=is_wall)
                 # add the area material to the document
                 self.doc.area_sections[name] = asec
+                # parse notes if available
+                if len(words) > 14:
+                    notes = words[14].strip()
+                    if notes.startswith('MVLEM'):
+                        # parse MVLEM notes
+                        self._parse_area_sections_mvlem(asec, notes)
+                    else:
+                        # just store the notes
+                        self.interface.send_message(f'[{cmd_name} {name}]: unrecognized notes: {notes}',
+                                                    mtype=stko_interface.message_type.WARNING)
 
     # this function parses the area section assignments and adds them to the document
     def _parse_area_sections_assignment(self):

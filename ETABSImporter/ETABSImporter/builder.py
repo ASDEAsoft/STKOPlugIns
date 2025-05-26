@@ -63,7 +63,7 @@ class builder:
         self._diaphram_map : Dict[str, _interaction_map_item] = {}
         self._elastic_material_map : Dict[str, Tuple[MpcProperty, MpcProperty]] = {} # value = tuple (uniaxial material, NDMaterial)
         self._nonlinear_material_map : Dict[str, MpcProperty] = {} # value = uniaxial material TODO if necessary make an NDMaterial
-        self._area_section_map : Dict[str, MpcProperty] = {}
+        self._area_section_map : Dict[str, MpcProperty] = {} # NOTE: may contain MpcElementPropery as well
         self._frame_section_map : Dict[str, MpcProperty] = {}
         self._frame_nonlinear_hinge_map : Dict[str, MpcProperty] = {}
 
@@ -622,7 +622,7 @@ class builder:
             if mat.mat_type == 'Steel':
                 meta = self.stko.doc.metaDataPhysicalProperty('materials.uniaxial.HystereticSM')
                 xobj = MpcXObject.createInstanceOf(meta)
-                # positive envelope
+                # positive envelope TODO: warning to 7
                 np = len(mat.pos_env)
                 if np < 2 or np > 7:
                     raise Exception(f'Nonlinear material {name} has an invalid number of points in the positive envelope: {np} (2 to 7 allowed for HystereticSM)')
@@ -662,16 +662,17 @@ class builder:
                 xobj.getAttribute('Preset').string = 'User-Defined'
                 xobj.getAttribute('Te').quantityVector.value = [i for i,_ in mat.pos_env]
                 xobj.getAttribute('Ts').quantityVector.value = [i for _,i in mat.pos_env]
-                xobj.getAttribute('Td').quantityVector.value = [1.0] * len(mat.pos_env) # TODO: default to 1.0 for now (no plasticity)
+                xobj.getAttribute('Td').quantityVector.value = [1.0] * len(mat.pos_env)
                 xobj.getAttribute('Ce').quantityVector.value = [i for i,_ in mat.neg_env]
                 xobj.getAttribute('Cs').quantityVector.value = [i for _,i in mat.neg_env]
                 def _cdam(ei, si):
                     epl = (ei-si/Ec)
                     return 1.0-si/(epl*0.5)/Ec if epl > 0.0 else 0.0
                 xobj.getAttribute('Cd').quantityVector.value = [_cdam(ei, si) for ei,si in mat.neg_env] # TODO: customize
+                xobj.getAttribute('autoRegularization').boolean = False # default to not auto regularization
                 xobj.getAttribute('LchRef').quantityScalar.value = unit_system.L(203.0, 'mm', self.etabs_doc.units[1]) # default to 203 mm
             else:
-                # TODO: is it correct?
+                # TODO: if only 3 points and allined make it linear
                 meta = self.stko.doc.metaDataPhysicalProperty('materials.uniaxial.ElasticMultiLinear')
                 xobj = MpcXObject.createInstanceOf(meta)
                 # joint strain points from neg_env (reversed and changed in sign) and pos_env, and put a 0 in the middle.
@@ -693,25 +694,65 @@ class builder:
 
     # builds the area sections in STKO
     def _build_area_sections(self):
+
+        # keeps track of shearK material for MVLEM
+        _shearK_map : Dict[float, MpcProperty] = {}
+        def _get_shearK_material(shearK:float) -> MpcProperty:
+            if shearK in _shearK_map:
+                return _shearK_map[shearK]
+            # create a new shearK material
+            prop = MpcProperty()
+            prop.id = self.stko.new_physical_property_id()
+            prop.name = f'MVLEM Shear {shearK}'
+            meta = self.stko.doc.metaDataPhysicalProperty('materials.uniaxial.Elastic')
+            xobj = MpcXObject.createInstanceOf(meta)
+            xobj.getAttribute('E').quantityScalar.value = shearK
+            prop.XObject = xobj
+            self.stko.add_physical_property(prop)
+            prop.commitXObjectChanges()
+            _shearK_map[shearK] = prop
+            return prop
+
         for name, section in self.etabs_doc.area_sections.items():
             # obtain the material
             mat = self.etabs_doc.elastic_materials.get(section.material, None)
             # generate the area section
-            prop = MpcProperty()
-            prop.id = self.stko.new_physical_property_id()
-            prop.name = f'Area Section {name}'
-            meta = self.stko.doc.metaDataPhysicalProperty('sections.ElasticMembranePlateSection')
-            xobj = MpcXObject.createInstanceOf(meta)
-            xobj.getAttribute('E').quantityScalar.value = mat.E1 * section.Fmod if mat else 0.0
-            xobj.getAttribute('nu').real = mat.U12 if mat else 0.0
-            xobj.getAttribute('h').quantityScalar.value = section.thickness
-            xobj.getAttribute('rho').quantityScalar.value = mat.rho if mat else 0.0
-            xobj.getAttribute('Ep_mod').real = section.Mmod / section.Fmod
-            prop.XObject = xobj
-            self.stko.add_physical_property(prop)
-            prop.commitXObjectChanges()
-            # add the section to the map
-            self._area_section_map[name] = prop
+            if section.conversion_info is not None:
+                if section.conversion_info['type'] == 'MVLEM':
+                    # do nothing, it requires just an Element Property
+                    prop = MpcElementProperty()
+                    prop.id = self.stko.new_element_property_id()
+                    prop.name = '{} Property {}'.format('Wall' if section.is_wall else 'Slab', name)
+                    meta = self.stko.doc.metaDataElementProperty('beam_column_elements.MVLEM_3D')
+                    xobj = MpcXObject.createInstanceOf(meta)
+                    xobj.getAttribute('m').integer = section.conversion_info['nfibers']
+                    xobj.getAttribute('Thicknesses').quantityVector.value = section.conversion_info['-thick']
+                    xobj.getAttribute('Widths').quantityVector.value = section.conversion_info['-width']
+                    xobj.getAttribute('Reinforcing_ratios').quantityVector.value = section.conversion_info['-rho']
+                    xobj.getAttribute('Concrete_tags').indexVector = [self._nonlinear_material_map[i].id for i in section.conversion_info['-matConcrete']]
+                    xobj.getAttribute('Steel_tags').indexVector = [self._nonlinear_material_map[i].id for i in section.conversion_info['-matSteel']]
+                    xobj.getAttribute('Shear_tag').index = _get_shearK_material(section.conversion_info['-ShearK'][0]).id
+                    prop.XObject = xobj
+                    self.stko.add_element_property(prop)
+                    prop.commitXObjectChanges()
+                    # add the section to the map
+                    self._area_section_map[name] = prop
+            else:
+                prop = MpcProperty()
+                prop.id = self.stko.new_physical_property_id()
+                prop.name = '{} Property {}'.format('Wall' if section.is_wall else 'Slab', name)
+                meta = self.stko.doc.metaDataPhysicalProperty('sections.ElasticMembranePlateSection')
+                xobj = MpcXObject.createInstanceOf(meta)
+                xobj.getAttribute('E').quantityScalar.value = mat.E1 * section.Fmod if mat else 0.0
+                xobj.getAttribute('nu').real = mat.U12 if mat else 0.0
+                xobj.getAttribute('h').quantityScalar.value = section.thickness
+                xobj.getAttribute('rho').quantityScalar.value = mat.rho if mat else 0.0
+                xobj.getAttribute('Ep_mod').real = section.Mmod / section.Fmod
+                prop.XObject = xobj
+                self.stko.add_physical_property(prop)
+                prop.commitXObjectChanges()
+                # add the section to the map
+                self._area_section_map[name] = prop
     
     # assignes the area sections to the areas in STKO
     def _assign_area_sections(self):

@@ -1,4 +1,4 @@
-from typing import List, Dict, Tuple, DefaultDict
+from typing import List, Dict, Tuple, DefaultDict, Any
 from collections import defaultdict
 import math
 from PyMpc import *
@@ -65,6 +65,7 @@ class area_section:
         self.Fmod = Fmod
         self.Mmod = Mmod
         self.is_wall = is_wall
+        self.conversion_info : Dict[str, Any] = None # conversion info for the area section, if needed
     def __str__(self):
         return '{} {} {} {} {} {} {}'.format(self.name, self.type, self.material, self.thickness, self.Fmod, self.Mmod, 'Wall' if self.is_wall else 'Slab')
     def __repr__(self):
