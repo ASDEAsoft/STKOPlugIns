@@ -4,7 +4,7 @@ from ETABSImporter.document import *
 from ETABSImporter.stko_interface import stko_interface
 from ETABSImporter.units_utils import unit_system
 import itertools
-from typing import List, Dict, Tuple, DefaultDict
+from typing import List, Dict, Tuple, DefaultDict, Union
 import math
 from collections import defaultdict
 
@@ -63,7 +63,7 @@ class builder:
         self._diaphram_map : Dict[str, _interaction_map_item] = {}
         self._elastic_material_map : Dict[str, Tuple[MpcProperty, MpcProperty]] = {} # value = tuple (uniaxial material, NDMaterial)
         self._nonlinear_material_map : Dict[str, MpcProperty] = {} # value = uniaxial material TODO if necessary make an NDMaterial
-        self._area_section_map : Dict[str, MpcProperty] = {} # NOTE: may contain MpcElementPropery as well
+        self._area_property_map : Dict[str, Union[MpcProperty, MpcElementProperty]] = {}
         self._frame_section_map : Dict[str, MpcProperty] = {}
         self._frame_nonlinear_hinge_map : Dict[str, MpcProperty] = {}
 
@@ -93,7 +93,7 @@ class builder:
             self._assign_area_sections()
             self._build_frame_sections()
             self._build_frame_nonlinear_hinges()
-            self._build_frame_sections_assignment()
+            self._assign_frame_sections()
             self._build_conditions_restraints()
             self._build_conditions_diaphragms()
             self._build_conditions_joint_loads()
@@ -736,7 +736,7 @@ class builder:
                     self.stko.add_element_property(prop)
                     prop.commitXObjectChanges()
                     # add the section to the map
-                    self._area_section_map[name] = prop
+                    self._area_property_map[name] = prop
             else:
                 prop = MpcProperty()
                 prop.id = self.stko.new_physical_property_id()
@@ -752,13 +752,14 @@ class builder:
                 self.stko.add_physical_property(prop)
                 prop.commitXObjectChanges()
                 # add the section to the map
-                self._area_section_map[name] = prop
+                self._area_property_map[name] = prop
     
     # assignes the area sections to the areas in STKO
     def _assign_area_sections(self):
+        asd_shell = None
         for area_mat_name, area_ids in self.etabs_doc.area_sections_assignment.items():
             # get the phsyical property id
-            prop = self._area_section_map.get(area_mat_name, None)
+            prop = self._area_property_map.get(area_mat_name, None)
             if prop is None:
                 raise Exception(f'Area material {area_mat_name} not found in STKO')
             # assign the property to the areas
@@ -769,6 +770,20 @@ class builder:
                     raise Exception(f'Area {area_id} not found in geometry')
                 # assign the property to the geometry
                 area_data.geom.assign(prop, area_data.subshape_id, MpcSubshapeType.Face)
+                # if prop is an MpcProperty, create on the fly a shell element property
+                if type(prop) == MpcProperty:
+                    # create a shell element property
+                    if asd_shell is None:
+                        asd_shell = MpcElementProperty()
+                        asd_shell.id = self.stko.new_element_property_id()
+                        asd_shell.name = f'Shell Element Property {area_mat_name}'
+                        meta = self.stko.doc.metaDataElementProperty('shell.ASDShellQ4')
+                        xobj = MpcXObject.createInstanceOf(meta)
+                        asd_shell.XObject = xobj
+                        self.stko.add_element_property(asd_shell)
+                        asd_shell.commitXObjectChanges()
+                    # assign the element property to the area geometry
+                    area_data.geom.assign(asd_shell, area_data.subshape_id, MpcSubshapeType.Face)
 
     # builds the frame sections in STKO
     def _build_frame_sections(self):
@@ -837,8 +852,8 @@ class builder:
             # add the hinge to the map
             self._frame_nonlinear_hinge_map[name] = prop
 
-    #○ build the frame sections assignment in STKO
-    def _build_frame_sections_assignment(self):
+    # assignes the frame sections and hinges to the frames in STKO
+    def _assign_frame_sections(self):
         '''
         Note: if a frame has only elastic properties, we can make an elastic beam element 
         and assign the elastic section directly to the frame.
