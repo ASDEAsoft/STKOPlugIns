@@ -11,8 +11,10 @@ class parser:
     def __init__(self, fname, interface:stko_interface=None):
         # save the filename
         self.fname = fname
+        # get the filename without the path and extension
+        fname_only = os.path.splitext(os.path.basename(fname))[0]
         # initialize document
-        self.doc = document()
+        self.doc = document(name = fname_only)
         # save the interface
         self.interface = interface
         # initialize command map

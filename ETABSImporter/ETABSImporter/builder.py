@@ -98,6 +98,7 @@ class builder:
             self._build_conditions_diaphragms()
             self._build_conditions_joint_loads()
             self._build_conditions_joint_masses()
+            self._build_analysis_step_recorder()
             self._build_analysis_step_constraint_pattern()
             self._build_analysis_step_load_patterns()
             self._build_finalization()
@@ -1123,6 +1124,29 @@ class builder:
             definition.commitXObjectChanges()
             # map
             self._th_ids[name] = definition.id
+
+    # build analysis step : recorder
+    def _build_analysis_step_recorder(self):
+        # create a new analysis step
+        step = MpcAnalysisStep()
+        step.id = self.stko.new_analysis_step_id()
+        step.name = 'Recorder'
+        # define xobject
+        meta = self.stko.doc.metaDataAnalysisStep('Recorders.MPCORecorder')
+        xobj = MpcXObject.createInstanceOf(meta)
+        xobj.getAttribute('name').string = f'{self.etabs_doc.name}.mpco'
+        xobj.getAttribute('displacement').boolean = True
+        xobj.getAttribute('rotation').boolean = True
+        xobj.getAttribute('reactionForce').boolean = True
+        xobj.getAttribute('reactionMoment').boolean = True
+        xobj.getAttribute('modesOfVibration').boolean = True
+        xobj.getAttribute('localForce').boolean = True
+        xobj.getAttribute('section.force').boolean = True
+        # TODO: add more options
+        step.XObject = xobj
+        # add the analysis step to the document
+        self.stko.add_analysis_step(step)
+        step.commitXObjectChanges()
 
     # build analysis step : constraint pattern
     # here we just create 1 pattern with all sp and mp constraints

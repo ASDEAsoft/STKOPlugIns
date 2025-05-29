@@ -172,8 +172,9 @@ class th_function:
 class document:
 
     # The document class is used to store the model data
-    def __init__(self):
-        # units
+    def __init__(self, name:str='ETABS Model'):
+        # name
+        self.name : str = name
         # units for length, force, temperature
         self.units : Tuple[str,str,str] = ('m', 'N', 'C')
         # The vertices dictionary is used to store the coordinates of the points in 3D space

@@ -2,7 +2,6 @@ from PyMpc import *
 
 # The interface to the STKO document
 class stko_interface:
-
     # the message types
     class message_type:
         INFO = 0
