@@ -98,9 +98,14 @@ class builder:
             self._build_conditions_diaphragms()
             self._build_conditions_joint_loads()
             self._build_conditions_joint_masses()
+            self._build_mesh()
             self._build_analysis_step_recorder()
             self._build_analysis_step_constraint_pattern()
             self._build_analysis_step_load_patterns()
+            self._build_analysis('Gravity Analysis', 'Static', load_const=True, wipe=False, duration=1.0, num_incr=10)
+            self._build_eigen('Post Gravity')
+            if self._build_uniform_excitation():
+                self._build_analysis('Dynamic Analysis', 'Transient', load_const=True, wipe=True, duration=30.0, num_incr=3000)
             self._build_finalization()
         except Exception as e:
             raise
@@ -1125,6 +1130,22 @@ class builder:
             # map
             self._th_ids[name] = definition.id
 
+    # mesh the model
+    def _build_mesh(self):
+        # get mesh controls
+        mc = self.stko.doc.meshControls
+        for _, geom_control in mc.geometryControls.items():
+            # make all faces quad/structured
+            for face_control in geom_control.faceControls:
+                face_control.topology = MpcMeshAlgoTopology.QuadHexa
+                face_control.algorithm = MpcMeshAlgo.Structured
+        # by default STKO uses 1 division per edge, and we are fine with that
+        # mesh the geometry
+        App.runCommand('BuildMesh')
+        # By default partition it with 1 partition: we want to use OpenSeesMP for MUMPS 
+        # but at the moment we need only 1 partition for the Eigen command!
+        MpcMeshPartitioner(self.stko.doc.mesh, 1).run()
+
     # build analysis step : recorder
     def _build_analysis_step_recorder(self):
         # create a new analysis step
@@ -1187,6 +1208,129 @@ class builder:
             self.stko.add_analysis_step(step)
             step.commitXObjectChanges()
     
+    # build an analysis step
+    def _build_analysis(self, name : str, atype : str, load_const : bool = True, wipe : bool = True, duration : float = 1.0, num_incr : int = 10):
+        # create a new analysis step
+        step = MpcAnalysisStep()
+        step.id = self.stko.new_analysis_step_id()
+        step.name = name
+        # define xobject
+        meta = self.stko.doc.metaDataAnalysisStep('Analyses.AnalysesCommand')
+        xobj = MpcXObject.createInstanceOf(meta)
+        xobj.getAttribute('analysisType').string = atype
+        xobj.getAttribute('constraints').string = 'Auto'
+        xobj.getAttribute('numbererType').string = 'Parallel Reverse Cuthill-McKee Numberer'
+        xobj.getAttribute('system').string = 'Mumps'
+        xobj.getAttribute('algorithm').string = 'Newton'
+        xobj.getAttribute('testCommand').string = 'Norm Displacement Increment Test'
+        xobj.getAttribute('tol/NormDispIncr').real = 1.0e-6
+        xobj.getAttribute('iter/NormDispIncr').integer = 20
+        xobj.getAttribute('Time Step Type').string = 'Adaptive Time Step'
+        xobj.getAttribute('numIncr').integer = num_incr
+        xobj.getAttribute('loadConst').boolean = load_const
+        if load_const:
+            xobj.getAttribute('use pseudoTime').boolean = True
+            xobj.getAttribute('pseudoTime').real = 0.0
+        xobj.getAttribute('wipeAnalysis').boolean = wipe
+        if atype == 'Static':
+            xobj.getAttribute('staticIntegrators').string = 'Load Control'
+            xobj.getAttribute('duration').real = duration
+        elif atype == 'Transient':
+            xobj.getAttribute('transientIntegrators').string = 'Newmark Method'
+            xobj.getAttribute('gamma').real = 0.5
+            xobj.getAttribute('beta').real = 0.25
+            xobj.getAttribute('duration/transient').real = duration
+        else:
+            raise Exception(f'Unknown analysis type {atype}')
+        # set xobj
+        step.XObject = xobj
+        # add the analysis step to the document
+        self.stko.add_analysis_step(step)
+        step.commitXObjectChanges()
+
+    # build an eigenvalue analysis step
+    def _build_eigen(self, name : str):
+        # create a new analysis step
+        step = MpcAnalysisStep()
+        step.id = self.stko.new_analysis_step_id()
+        step.name = f'Eigen Analysis - {name}'
+        # define xobject
+        meta = self.stko.doc.metaDataAnalysisStep('Analyses.eigen')
+        xobj = MpcXObject.createInstanceOf(meta)
+        xobj.getAttribute('numEigenvalues').integer = 6
+        # set xobj
+        step.XObject = xobj
+        # add the analysis step to the document
+        self.stko.add_analysis_step(step)
+        step.commitXObjectChanges()
+        # do the same with the modalProperties
+        step = MpcAnalysisStep()
+        step.id = self.stko.new_analysis_step_id()
+        step.name = f'Modal Properties - {name}'
+        # define xobject
+        meta = self.stko.doc.metaDataAnalysisStep('Analyses.modalProperties')
+        xobj = MpcXObject.createInstanceOf(meta)
+        xobj.getAttribute('-print').boolean = True
+        xobj.getAttribute('-file').boolean = True
+        xobj.getAttribute('reportFileName').string = f'{step.name}.txt'
+        # set xobj
+        step.XObject = xobj
+        # add the analysis step to the document
+        self.stko.add_analysis_step(step)
+        step.commitXObjectChanges()
+
+    # build uniform excitation
+    def _build_uniform_excitation(self) -> bool:
+        '''
+        TODO: now we select only 1 pair of ground motion (in X and Y)
+        '''
+        # among the ground motions in the stko definitons,
+        # find the most severe one in X, and use the Y that pairs to it.
+        idx = None
+        maxx = None
+        idy = None
+        for name, ts_id in self._th_ids.items():
+            if not name.endswith('X'):
+                continue
+            # get the time series
+            ts = self.stko.doc.getDefinition(ts_id)
+            if ts is None:
+                continue
+            # check if it is a path time series
+            if ts.XObject.completeName != 'timeSeries.Path':
+                continue
+            # get the values
+            values = ts.XObject.getAttribute('list_of_values').quantityVector.value
+            # get the max absolute value
+            max_val = max(abs(v) for v in values)
+            if maxx is None or max_val > maxx:
+                maxx = max_val
+                idx = ts_id
+                # find the Y time series that pairs to it
+                idy = self._th_ids.get(name[:-1] + 'Y', None)
+        # counter
+        num_done = 0
+        # X
+        for id, direction, label in zip((idx, idy), ('dx', 'dy'), ('_X', '_Y')):
+            # create a new analysis step
+            step = MpcAnalysisStep()
+            step.id = self.stko.new_analysis_step_id()
+            step.name = f'Uniform Excitation{label}'
+            # define xobject
+            meta = self.stko.doc.metaDataAnalysisStep('Patterns.addPattern.UniformExcitation')
+            xobj = MpcXObject.createInstanceOf(meta)
+            xobj.getAttribute('tsTag').index = id
+            # set xobj
+            step.XObject = xobj
+            # add the analysis step to the document
+            self.stko.add_analysis_step(step)
+            step.commitXObjectChanges()
+            num_done += 1
+        # return True if we have done at least 1 step
+        return num_done > 0
+
     # do some extra stuff to finalize the import
     def _build_finalization(self):
         self.stko.assign_custom_colors()
+        # TODO: keep dialog open...
+        # when the dialog is closed, we can ask the user to save the document
