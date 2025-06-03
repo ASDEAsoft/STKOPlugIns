@@ -8,6 +8,7 @@ from PySide2.QtWidgets import (
 	QApplication,
 	QDialog,
 	QFileDialog,
+    QInputDialog,
 	QVBoxLayout,
 	QLabel,
 	QProgressBar,
@@ -133,3 +134,17 @@ class stko_interface_gui(stko_interface):
             self.errors.append(msg)
         # process events
         App.processEvents()
+    
+    # let the user select an input from a list
+    def select_from_list(self, title : str, items : List[str], default_index : int = 0) -> int:
+        if len(items) == 0:
+            return -1
+        if default_index < 0 or default_index >= len(items):
+            default_index = 0
+        # this default implementation is for GUI interfaces
+        index, ok = QInputDialog.getItem(
+            QApplication.activeWindow(), title, 
+            "Select an item:", items, default_index, False)
+        if ok and index:
+            return items.index(index)
+        return -1

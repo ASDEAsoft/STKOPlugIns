@@ -10,6 +10,15 @@ from collections import defaultdict
 
 class _globals:
     fix_labels = ('Ux', 'Uy', 'Uz', 'Rx', 'Ry', 'Rz/3D')
+    # TODO: ask kristian if this is correct
+    uniform_excitation_dir_map = {
+        'U1' : 'dx',
+        'U2' : 'dy',
+        'U3' : 'dz',
+        'R1' : 'Rx',
+        'R2' : 'Ry',
+        'R3' : 'Rz',
+    }
 
 # a utility class to store the components of the ETABS model
 # that will be part of a single geometry in STKO
@@ -104,8 +113,9 @@ class builder:
             self._build_analysis_step_load_patterns()
             self._build_analysis('Gravity Analysis', 'Static', load_const=True, wipe=False, duration=1.0, num_incr=10)
             self._build_eigen('Post Gravity')
-            if self._build_uniform_excitation():
-                self._build_analysis('Dynamic Analysis', 'Transient', load_const=True, wipe=True, duration=30.0, num_incr=3000)
+            done, duration, num_incr = self._build_uniform_excitation()
+            if done:
+                self._build_analysis('Dynamic Analysis', 'Transient', load_const=True, wipe=True, duration=duration, num_incr=num_incr)
             self._build_finalization()
         except Exception as e:
             raise
@@ -1292,55 +1302,81 @@ class builder:
         self.stko.add_analysis_step(step)
         step.commitXObjectChanges()
 
-    # build uniform excitation
-    def _build_uniform_excitation(self) -> bool:
+    # build uniform excitation.
+    # returns a tuple (bool, float, int)
+    # where the first is True if the uniform excitation was built,
+    # the second is the total duration of the uniform excitation,
+    # and the third is the number of increments.
+    def _build_uniform_excitation(self) -> Tuple[bool, float, int]:
         '''
-        TODO: now we select only 1 pair of ground motion (in X and Y)
+        TODO: to be decided.
+        # now we ask the user what to choose for the uniform excitation.
         '''
-        # among the ground motions in the stko definitons,
-        # find the most severe one in X, and use the Y that pairs to it.
-        idx = None
-        maxx = None
-        idy = None
-        for name, ts_id in self._th_ids.items():
-            if not name.endswith('X'):
-                continue
-            # get the time series
-            ts = self.stko.doc.getDefinition(ts_id)
-            if ts is None:
-                continue
-            # check if it is a path time series
-            if ts.XObject.completeName != 'timeSeries.Path':
-                continue
-            # get the values
-            values = ts.XObject.getAttribute('list_of_values').quantityVector.value
-            # get the max absolute value
-            max_val = max(abs(v) for v in values)
-            if maxx is None or max_val > maxx:
-                maxx = max_val
-                idx = ts_id
-                # find the Y time series that pairs to it
-                idy = self._th_ids.get(name[:-1] + 'Y', None)
-        # counter
-        num_done = 0
-        # X
-        for id, direction, label in zip((idx, idy), ('dx', 'dy'), ('_X', '_Y')):
-            # create a new analysis step
+        # quick return if no time histories are defined
+        if len(self.etabs_doc.load_cases_dynamic) == 0:
+            return False, 0.0, 0
+        # if there are more than 1 time histories defined,
+        # gather information and let the user choose which one to use.
+        index = 0
+        if len(self.etabs_doc.load_cases_dynamic) > 1:
+            # gather information as a list of string.
+            # each one has:
+            # name, duration, AMax (one for each comp), ProBy
+            # we will use this to let the user choose which one to use.
+            info = []
+            for _, lc in self.etabs_doc.load_cases_dynamic.items():
+                dt = lc.step_size
+                duration = dt * lc.num_steps
+                lc_info = f'{lc.name} - Step: {dt:.3f}s, Duration: {duration:.3f}s, ProBy: {lc.pro_by}'
+                for function, direction, scale in lc.functions:
+                    # get the time history
+                    th = self.etabs_doc.th_functions.get(function, None)
+                    if th is None:
+                        raise Exception(f'Time history {function} not found in ETABS document')
+                    # get the max value
+                    amax = max(abs(v) for v in th.values) * scale
+                    # add to info
+                    lc_info += f', {direction}: max(A): {amax:.3f}'
+                info.append(lc_info)
+            # ask the user to choose which one to use
+            index = self.stko.select_from_list(
+                'Please select the dynamic load case to use for the analysis.',
+                info,
+                default_index=0,
+            )
+            if index < 0 or index >= len(self.etabs_doc.load_cases_dynamic):
+                # user cancelled
+                return False, 0.0, 0
+        # get the selected load case
+        lc = list(self.etabs_doc.load_cases_dynamic.values())[index]
+        # get duration and increments for the result
+        dt = lc.step_size
+        duration = dt * lc.num_steps
+        retval = (True, duration, lc.num_steps)
+        # create the uniform excitations (one for each item in lc.functions)
+        for function, direction, scale in lc.functions:
+            # get the time history
+            th = self.etabs_doc.th_functions.get(function, None)
+            if th is None:
+                raise Exception(f'Time history {function} not found in ETABS document')
+            # create a analysis step
             step = MpcAnalysisStep()
             step.id = self.stko.new_analysis_step_id()
-            step.name = f'Uniform Excitation{label}'
+            step.name = f'({lc.name} - Uniform Excitation {function} - {direction}'
             # define xobject
             meta = self.stko.doc.metaDataAnalysisStep('Patterns.addPattern.UniformExcitation')
             xobj = MpcXObject.createInstanceOf(meta)
-            xobj.getAttribute('tsTag').index = id
+            xobj.getAttribute('tsTag').index = self._th_ids[function]
+            xobj.getAttribute('direction').string = _globals.uniform_excitation_dir_map[direction]
+            xobj.getAttribute('-fact').boolean = True
+            xobj.getAttribute('cFactor').real = scale
             # set xobj
             step.XObject = xobj
             # add the analysis step to the document
             self.stko.add_analysis_step(step)
             step.commitXObjectChanges()
-            num_done += 1
-        # return True if we have done at least 1 step
-        return num_done > 0
+        # return the result
+        return retval
 
     # do some extra stuff to finalize the import
     def _build_finalization(self):

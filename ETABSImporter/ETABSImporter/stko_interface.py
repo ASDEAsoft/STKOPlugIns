@@ -1,4 +1,5 @@
 from PyMpc import *
+from typing import List
 
 # The interface to the STKO document
 class stko_interface:
@@ -138,3 +139,23 @@ class stko_interface:
     # send a message to the terminal window
     def send_message(self, msg : str, mtype : message_type = message_type.INFO):
         print(msg)
+    
+    # let the user select an input from a list
+    def select_from_list(self, title : str, items : List[str], default_index : int = 0) -> int:
+        if len(items) == 0:
+            return -1
+        if default_index < 0 or default_index >= len(items):
+            default_index = 0
+        # this default implementation is for command line interfaces
+        print(title)
+        for i, item in enumerate(items):
+            print(f"{i}: {item}")
+        print(f"Select an item (0-{len(items)-1}): ", end="")
+        try:
+            index = int(input())
+            if index < 0 or index >= len(items):
+                raise ValueError("Index out of range.")
+            return index
+        except ValueError as e:
+            print(f"Invalid input: {e}. Using default index {default_index}.")
+            return default_index
