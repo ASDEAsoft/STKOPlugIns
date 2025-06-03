@@ -51,6 +51,7 @@ class parser:
         self._parse_joint_loads()
         self._parse_joint_masses()
         self._parse_time_history_functions()
+        self._parse_load_case_static()
     
     def _parse_units(self):
         # this function parses the units and adds them to the document
@@ -441,3 +442,37 @@ class parser:
                 values = [float(pline) for pline in (line.strip() for line in ifile.readlines()) if pline]
             # save it
             self.doc.th_functions[name] = th_function(name, dt, values)
+    
+    # parses static load cases
+    def _parse_load_case_static(self):
+        '''
+        command format:
+        * LOAD_CASES_LINEAR_STATIC
+        # Name,Group,MassSource,StiffType,LoadType,LoadName,LoadSF,DesignType
+        '''
+        for item in self.commands['* LOAD_CASES_LINEAR_STATIC']:
+            words = item.split(',')
+            name = words[0]
+            group = words[1]
+            mass_source = words[2]
+            stiff_type = words[3]
+            load_type = words[4]
+            load_name = words[5]
+            load_sf = float(words[6])
+            design_type = words[7] if len(words) > 7 else None
+            # add the load case to the document or get existing one
+            lc = self.doc.load_cases_static.get(name, None)
+            if lc is None:
+                # create a new load case
+                lc = load_case_static(name)
+                self.doc.load_cases_static[name] = lc
+            # add the load pattern to the load case
+            lc.load_patterns.append((load_name, load_sf))
+            # check kinematics
+            if self.doc.kinematics: # if already defined...
+                if stiff_type != self.doc.kinematics:
+                    self.interface.send_message(f'[LOAD_CASES_LINEAR_STATIC {name}]: kinematics type {stiff_type} does not match the existing kinematics type {self.doc.kinematics}', 
+                                                mtype=stko_interface.message_type.WARNING)
+            else:
+                # set the kinematics type
+                self.doc.kinematics = stiff_type

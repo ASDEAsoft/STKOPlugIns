@@ -785,6 +785,8 @@ class builder:
                         asd_shell.name = f'Shell Element Property {area_mat_name}'
                         meta = self.stko.doc.metaDataElementProperty('shell.ASDShellQ4')
                         xobj = MpcXObject.createInstanceOf(meta)
+                        if self.etabs_doc.kinematics != 'Linear': #TODO: check if this is correct
+                            xobj.getAttribute('Kinematics').string = 'Corotational'
                         asd_shell.XObject = xobj
                         self.stko.add_element_property(asd_shell)
                         asd_shell.commitXObjectChanges()
@@ -876,7 +878,10 @@ class builder:
                 prop.name = 'Elastic Beam Element'
                 meta = self.stko.doc.metaDataElementProperty('beam_column_elements.elasticBeamColumn')
                 xobj = MpcXObject.createInstanceOf(meta)
-                # TODO: set kinematics!
+                if self.etabs_doc.kinematics == 'P-Delta':
+                    xobj.getAttribute('transfType').string = 'PDelta'
+                elif self.etabs_doc.kinematics == 'Corotational':
+                    xobj.getAttribute('transfType').string = 'Corotational' # TODO: check if this is correct
                 prop.XObject = xobj
                 self.stko.add_element_property(prop)
                 prop.commitXObjectChanges()
@@ -1188,25 +1193,33 @@ class builder:
     
     # build an analysis step : load patterns
     def _build_analysis_step_load_patterns(self):
-        for name, pattern in self.etabs_doc.load_patterns.items():
-            # create a new analysis step
-            step = MpcAnalysisStep()
-            step.id = self.stko.new_analysis_step_id()
-            step.name = f'Load Pattern {name}'
-            # define xobject
-            meta = self.stko.doc.metaDataAnalysisStep('Patterns.addPattern.loadPattern')
-            xobj = MpcXObject.createInstanceOf(meta)
-            xobj.getAttribute('tsTag').index = self._linear_time_series_id
-            # add conditions
-            # - load
-            load_ids = self._pattern_load_ids[name]
-            if len(load_ids) > 0:
-                xobj.getAttribute('load').indexVector = load_ids
-            # set xobj
-            step.XObject = xobj
-            # add the analysis step to the document
-            self.stko.add_analysis_step(step)
-            step.commitXObjectChanges()
+        # process all patterns in the static load cases
+        for lc_name, lc in self.etabs_doc.load_cases_static.items():
+            for name, pattern_factor in lc.load_patterns:
+                pattern = self.etabs_doc.load_patterns.get(name, None)
+                if pattern is None:
+                    raise Exception(f'Load pattern {name} not found in ETABS document')
+                # create a new analysis step
+                step = MpcAnalysisStep()
+                step.id = self.stko.new_analysis_step_id()
+                step.name = f'Load Pattern {name}'
+                # define xobject
+                meta = self.stko.doc.metaDataAnalysisStep('Patterns.addPattern.loadPattern')
+                xobj = MpcXObject.createInstanceOf(meta)
+                xobj.getAttribute('tsTag').index = self._linear_time_series_id
+                # add conditions
+                # - load
+                load_ids = self._pattern_load_ids[name]
+                if len(load_ids) > 0:
+                    xobj.getAttribute('load').indexVector = load_ids
+                # scale
+                xobj.getAttribute('-fact').boolean = True
+                xobj.getAttribute('cFactor').real = pattern_factor
+                # set xobj
+                step.XObject = xobj
+                # add the analysis step to the document
+                self.stko.add_analysis_step(step)
+                step.commitXObjectChanges()
     
     # build an analysis step
     def _build_analysis(self, name : str, atype : str, load_const : bool = True, wipe : bool = True, duration : float = 1.0, num_incr : int = 10):

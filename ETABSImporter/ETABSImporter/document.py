@@ -168,6 +168,16 @@ class th_function:
     def __repr__(self):
         return self.__str__()
 
+# the static load case
+class load_case_static:
+    def __init__(self, name:str):
+        self.name = name
+        self.load_patterns : List[Tuple[str, float]] = [] # list of tuples (load_pattern_name, multiplier)
+    def __str__(self):
+        return '{}: {}'.format(self.name, self.load_patterns)
+    def __repr__(self):
+        return self.__str__()
+
 # The document class is used to store the model data
 class document:
 
@@ -218,11 +228,15 @@ class document:
         self.joint_masses : Dict[int, joint_mass] = {}
         # time history functions (key = function name, value = function object)
         self.th_functions : Dict[str, th_function] = {}
+        # static load cases (key = load case name, value = load case object)
+        self.load_cases_static : Dict[str, load_case_static] = {}
         # computed tolerance
         self.bbox = FxBndBox()
         self.tolerance = 1.0e-6
         # penalty value for the model
         self.penalty_hinges = 1.0e12
+        # the kinematic type: Linear or P-Delta (TODO: ask kristijan)
+        self.kinematics : str = ''
 
     # return the string representation of the document
     def __str__(self):
