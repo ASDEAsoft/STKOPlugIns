@@ -178,6 +178,38 @@ class load_case_static:
     def __repr__(self):
         return self.__str__()
 
+# the dynamic load case
+class load_case_dynamic:
+    def __init__(self, name:str, load_type:str, num_steps:int, step_size:float,
+                 pro_by:str, mass_coeff:float, stiff_coeff:float,
+                 pro_time_val1:float, pro_damping1:float,
+                 pro_time_val2:float, pro_damping2:float,
+                 mode4_ratio:int):
+        self.name = name
+        self.functions : List[Tuple[str, str, float]] = [] # list of tuples (function_name, direction (U1, U2....), multiplier)
+        self.load_type = load_type
+        self.num_steps = num_steps
+        self.step_size = step_size
+        self.pro_by = pro_by
+        self.mass_coeff = mass_coeff
+        self.stiff_coeff = stiff_coeff
+        self.pro_time_val1 = pro_time_val1
+        self.pro_damping1 = pro_damping1
+        self.pro_time_val2 = pro_time_val2
+        self.pro_damping2 = pro_damping2
+        self.mode4_ratio = mode4_ratio
+    def __str__(self):
+        return ('Name: {}, Load Type: {}, Functions: {}, '
+                'Num Steps: {}, Step Size: {}, Pro By: {}, '
+                'Mass Coeff: {}, Stiff Coeff: {}, Pro Time Val1: {}, Pro Damping1: {}, '
+                'Pro Time Val2: {}, Pro Damping2: {}, Mode4 Ratio: {}').format(
+            self.name, self.load_type, self.functions,
+            self.num_steps, self.step_size, self.pro_by,
+            self.mass_coeff, self.stiff_coeff, self.pro_time_val1, self.pro_damping1,
+            self.pro_time_val2, self.pro_damping2, self.mode4_ratio)
+    def __repr__(self):
+        return self.__str__()
+
 # The document class is used to store the model data
 class document:
 
@@ -230,6 +262,8 @@ class document:
         self.th_functions : Dict[str, th_function] = {}
         # static load cases (key = load case name, value = load case object)
         self.load_cases_static : Dict[str, load_case_static] = {}
+        # dynamic load cases (key = load case name, value = load case object)
+        self.load_cases_dynamic : Dict[str, load_case_dynamic] = {}
         # computed tolerance
         self.bbox = FxBndBox()
         self.tolerance = 1.0e-6

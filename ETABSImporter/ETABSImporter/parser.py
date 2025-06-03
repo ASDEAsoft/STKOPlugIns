@@ -52,6 +52,7 @@ class parser:
         self._parse_joint_masses()
         self._parse_time_history_functions()
         self._parse_load_case_static()
+        self._parse_load_case_time_history()
     
     def _parse_units(self):
         # this function parses the units and adds them to the document
@@ -476,3 +477,69 @@ class parser:
             else:
                 # set the kinematics type
                 self.doc.kinematics = stiff_type
+    
+    # parse time history load cases
+    def _parse_load_case_time_history(self):
+        '''
+        command format:
+        * LOAD_CASES_TH_NL_DIRECT_INTEGRATION
+        # Name,MassSource,InitialCond,NonlinCase,LoadType,LoadName,Function,TransAccSF,TimeFactor,ArrivalTime,Angle,GeoNonlin,
+        # NumSteps,StepSize,ProBy,MassCoeff,StiffCoeff,ProTimeVal1,ProDamping1,ProTimeVal2,ProDamping2,Mode4Ratio,ModalCase,
+        # IntType,Gamma,Beta,Alpha,SolScheme,MaxSize,MinSize,EventTol,
+        # MaxEvents,MaxCSIters,MaxNRIters,IterTol,LineSearch,MaxSearches,SearchTol,SearchFact,DesignType,GUID,Notes
+
+        Now we just need:
+        - Name
+        - LoadType (Accel or TODO: ask kristijan if we need to support other types)
+        - LoadName (U1, U2, U3, R1, R2, R3, direction, TODO: ask kristijan if the last 3 are correct)
+        - Function (name of the time history function)
+        - TransAccSF (scale factor for the acceleration time history function)
+        - GeoNonlin (geometric nonlinearity)
+        - NumSteps (number of steps)
+        - StepSize (step size)
+        - ProBy (Damping: proportional by, Direct, Period Ratio, or Frequency Ratio)
+        - MassCoeff (mass coefficient, only if ProBy is Direct)
+        - StiffCoeff (stiffness coefficient, only if ProBy is Direct)
+        - ProTimeVal1 (proportional time value 1, only if ProBy is Period Ratio or Frequency Ratio)
+        - ProDamping1 (proportional damping 1, only if ProBy is Period Ratio or Frequency Ratio)
+        - ProTimeVal2 (proportional time value 2, only if ProBy is Period Ratio or Frequency Ratio)
+        - ProDamping2 (proportional damping 2, only if ProBy is Period Ratio or Frequency Ratio)
+        - Mode4Ratio (reference mode index for ratio, only if ProBy is Period Ratio or Frequency Ratio)
+        '''
+        # iterate over the load cases
+        for item in self.commands['* LOAD_CASES_TH_NL_DIRECT_INTEGRATION']:
+            words = item.split(',')
+            name = words[0]
+            # get existing or generare a new load case
+            lc = self.doc.load_cases_dynamic.get(name, None)
+            if lc is None:
+                # parse other parameters
+                load_type = words[4]
+                kinematics = words[11]
+                num_steps = int(words[12])
+                step_size = float(words[13])
+                pro_by = words[14]
+                mass_coeff = float(words[15])
+                stiff_coeff = float(words[16])
+                pro_time_val1 = float(words[17])
+                pro_damping1 = float(words[18])
+                pro_time_val2 = float(words[19])
+                pro_damping2 = float(words[20])
+                mode4_ratio = int(words[21])
+                # create the load case
+                lc = load_case_dynamic(name, load_type, num_steps, step_size,
+                                    pro_by, mass_coeff, stiff_coeff, pro_time_val1, pro_damping1,
+                                    pro_time_val2, pro_damping2, mode4_ratio)
+                # add the load case to the document
+                self.doc.load_cases_dynamic[name] = lc
+                # check kinematics
+                if self.doc.kinematics: # if already defined...
+                    if kinematics != self.doc.kinematics:
+                        self.interface.send_message(f'[LOAD_CASES_TH_NL_DIRECT_INTEGRATION {name}]: kinematics type {kinematics} does not match the existing kinematics type {self.doc.kinematics}', 
+                                                    mtype=stko_interface.message_type.WARNING)
+            # parse direction, function and scale factor
+            load_name = words[5]
+            function = words[6]
+            scale_factor = float(words[7])
+            # add the load pattern to the load case
+            lc.functions.append((function, load_name, scale_factor))
