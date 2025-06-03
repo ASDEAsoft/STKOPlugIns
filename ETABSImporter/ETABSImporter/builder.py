@@ -1272,7 +1272,7 @@ class builder:
         xobj = MpcXObject.createInstanceOf(meta)
         xobj.getAttribute('-print').boolean = True
         xobj.getAttribute('-file').boolean = True
-        xobj.getAttribute('reportFileName').string = f'{step.name}.txt'
+        xobj.getAttribute('reportFileName').string = f'{step.name}.modal'
         # set xobj
         step.XObject = xobj
         # add the analysis step to the document
