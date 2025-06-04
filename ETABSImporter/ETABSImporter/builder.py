@@ -1245,7 +1245,9 @@ class builder:
         xobj.getAttribute('constraints').string = 'Auto'
         xobj.getAttribute('numbererType').string = 'Parallel Reverse Cuthill-McKee Numberer'
         xobj.getAttribute('system').string = 'Mumps'
-        xobj.getAttribute('algorithm').string = 'Newton'
+        xobj.getAttribute('algorithm').string = 'Krylov-Newton'
+        xobj.getAttribute('-maxDim/KrylovNewton').boolean = True
+        xobj.getAttribute('maxDim/KrylovNewton').integer = 40
         xobj.getAttribute('testCommand').string = 'Norm Displacement Increment Test'
         xobj.getAttribute('tol/NormDispIncr').real = 1.0e-6
         xobj.getAttribute('iter/NormDispIncr').integer = 20
