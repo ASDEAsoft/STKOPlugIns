@@ -1249,7 +1249,7 @@ class builder:
         xobj.getAttribute('-maxDim/KrylovNewton').boolean = True
         xobj.getAttribute('maxDim/KrylovNewton').integer = 40
         xobj.getAttribute('testCommand').string = 'Norm Displacement Increment Test'
-        xobj.getAttribute('tol/NormDispIncr').real = 1.0e-6
+        xobj.getAttribute('tol/NormDispIncr').real = unit_system.L(1.0e-5, 'm', self.etabs_doc.units[1]) 
         xobj.getAttribute('iter/NormDispIncr').integer = 20
         xobj.getAttribute('Time Step Type').string = 'Adaptive Time Step'
         xobj.getAttribute('numIncr').integer = num_incr
