@@ -217,8 +217,8 @@ class document:
     def __init__(self, name:str='ETABS Model'):
         # name
         self.name : str = name
-        # units for length, force, temperature
-        self.units : Tuple[str,str,str] = ('m', 'N', 'C')
+        # units for force, length, temperature
+        self.units : Tuple[str,str,str] = ('N', 'm', 'C')
         # The vertices dictionary is used to store the coordinates of the points in 3D space
         self.vertices : Dict[int, Math.vec3] = {}
         # The frames dictionary is used to store the connectivity of the frame members

@@ -115,6 +115,7 @@ class builder:
             self._build_eigen('Post Gravity')
             done, duration, num_incr = self._build_uniform_excitation()
             if done:
+                self._build_monitors()
                 self._build_analysis('Dynamic Analysis', 'Transient', load_const=True, wipe=True, duration=duration, num_incr=num_incr)
             self._build_finalization()
         except Exception as e:
@@ -1317,7 +1318,20 @@ class builder:
         # now we implement it as a tcl custom script to mimick the ETABS behavior
         meta = self.stko.doc.metaDataAnalysisStep('Misc_commands.customCommand')
         xobj = MpcXObject.createInstanceOf(meta)
-        xobj.getAttribute('TCLscript').string = f'''
+        if lc.pro_by == 'Direct':
+            xobj.getAttribute('TCLscript').string = f'''
+# Output results
+set CM {lc.mass_coeff} ;# Rayleigh damping coefficient for mass proportional damping
+set CK {lc.stiff_coeff} ;# Rayleigh damping coefficient for stiffness proportional damping
+puts "Direct Rayleigh Damping..."
+puts "CM (alpha): $CM"
+puts "CK (beta):  $CK"
+# define OpenSees command
+# rayleigh $alphaM $betaK $betaKinit $betaKcomm
+rayleigh $CM 0.0 $CK 0.0
+'''
+        else:
+            xobj.getAttribute('TCLscript').string = f'''
 # User inputs
 set Mode4Ratio {lc.mode4_ratio} ;# Index of reference mode (1-based)
 set ProTimeVal1 {lc.pro_time_val1} ;# Scale factor for F1
@@ -1408,6 +1422,112 @@ rayleigh $CM 0.0 $CK 0.0
         # add the analysis step to the document
         self.stko.add_analysis_step(step)
         step.commitXObjectChanges()
+
+    # builds default monitors
+    def _build_monitors(self):
+        # find a reference node
+        # try the top-most node in the rigid diaphragms
+        control_geom_info = None
+        zmax = -float('inf')
+        for name, items in self.etabs_doc.diaphragms.items():
+            if len(items) > 0:
+                retained_id = items[-1]
+                retained_z = self.etabs_doc.vertices[retained_id].z
+                if retained_z > zmax:
+                    zmax = retained_z
+                    # get the geometry and subshape id
+                    retained_data = self._vertex_map.get(retained_id, None)
+                    if retained_data is None:
+                        raise Exception(f'Diagram {name} retained vertex {retained_id} not found in geometry')
+                    control_geom_info = retained_data
+        # if not found, exit
+        if control_geom_info is None:
+            return
+        # get all information about the reaction nodes at restraints
+        reaction_geom_info : List[_geometry_map_item] = []
+        for i, _ in self.etabs_doc.restraints.items():
+            # get the geometry and subshape id
+            vertex_data = self._vertex_map.get(i, None)
+            if vertex_data is None:
+                raise Exception(f'Restraint {i} not found in geometry')
+            # add to the list
+            reaction_geom_info.append(vertex_data)
+        # create 2 selection sets, one for the control node and one for the reaction nodes
+        # control node selection set
+        control_sset = MpcSelectionSet()
+        control_sset.id = self.stko.new_selection_set_id()
+        control_sset.name = 'Control Node'
+        sset_item = MpcSelectionSetItem()
+        sset_item.wholeGeometry = False
+        sset_item.vertices.append(control_geom_info.subshape_id)
+        control_sset.geometries[control_geom_info.geom.id] = sset_item
+        self.stko.add_selection_set(control_sset)
+        # reaction nodes selection set
+        reaction_sset = MpcSelectionSet()
+        reaction_sset.id = self.stko.new_selection_set_id()
+        reaction_sset.name = 'Reaction Nodes'
+        for vertex_data in reaction_geom_info:
+            if vertex_data.geom.id in reaction_sset.geometries:
+                # if the geometry is already in the selection set, just append the vertex
+                sset_item = reaction_sset.geometries[vertex_data.geom.id]
+            else:
+                # if the geometry is not in the selection set, create a new item
+                sset_item = MpcSelectionSetItem()
+                sset_item.wholeGeometry = False
+                reaction_sset.geometries[vertex_data.geom.id] = sset_item
+            sset_item.vertices.append(vertex_data.subshape_id)
+        self.stko.add_selection_set(reaction_sset)
+        # now we can build the monitors
+        # 1. Force-Displacement-X
+        # 2. Force-Displacement-Y
+        # 3. Acceleration-Time-X
+        # 4. Acceleration-Time-Y
+        for mon_type, mon_name in enumerate(('Force-Displacement', 'Acceleration-Time')):
+            for dir_label in ('X', 'Y'):
+                # create a new monitor
+                monitor = MpcAnalysisStep()
+                monitor.id = self.stko.new_analysis_step_id()
+                monitor.name = f'{mon_name}-{dir_label}'
+                # define xobject
+                meta = self.stko.doc.metaDataAnalysisStep('Misc_commands.monitor')
+                xobj = MpcXObject.createInstanceOf(meta)
+                xobj.getAttribute('Monitor Plot').boolean = True
+                xobj.getAttribute('Use Custom Name').boolean = True
+                xobj.getAttribute('Custom Name').string = f'{mon_name}-{dir_label}'
+                if mon_type == 0:
+                    # plot-x (displacement)
+                    xobj.getAttribute('Type/X').string = 'Results X Axis Plot'
+                    xobj.getAttribute('Result/X').string = 'Displacement'
+                    xobj.getAttribute('Component/X').string = dir_label
+                    xobj.getAttribute('Selection Set/X').index = control_sset.id
+                    xobj.getAttribute('Operation/X').string = 'Average'
+                    # plot-y (-reaction force)
+                    xobj.getAttribute('Type/Y').string = 'Results Y Axis Plot'
+                    xobj.getAttribute('Result/Y').string = 'Reaction Force'
+                    xobj.getAttribute('Component/Y').string = dir_label
+                    xobj.getAttribute('Selection Set/Y').index = reaction_sset.id
+                    xobj.getAttribute('Operation/Y').string = 'Sum'
+                    xobj.getAttribute('ScaleFactor/Y').real = -1.0
+                    # labels
+                    xobj.getAttribute('XLabelAppend').string = f'[{self.etabs_doc.units[1]}]'
+                    xobj.getAttribute('YLabelAppend').string = f'[{self.etabs_doc.units[0]}]'
+                else:
+                    # plot-x (time)
+                    xobj.getAttribute('Type/X').string = 'Pseudo Time'
+                    # plot-y (acceleration)
+                    xobj.getAttribute('Type/Y').string = 'Results Y Axis Plot'
+                    xobj.getAttribute('Result/Y').string = 'Acceleration'
+                    xobj.getAttribute('Component/Y').string = dir_label
+                    xobj.getAttribute('Selection Set/Y').index = control_sset.id
+                    xobj.getAttribute('Operation/Y').string = 'Average'
+                    # labels
+                    xobj.getAttribute('XLabelAppend').string = 's'
+                    xobj.getAttribute('YLabelAppend').string = f'[{self.etabs_doc.units[1]}/s^2]'
+                # set xobj
+                monitor.XObject = xobj
+                # add the analysis step to the document
+                self.stko.add_analysis_step(monitor)
+                monitor.commitXObjectChanges()
 
     # build uniform excitation.
     # returns a tuple (bool, float, int)

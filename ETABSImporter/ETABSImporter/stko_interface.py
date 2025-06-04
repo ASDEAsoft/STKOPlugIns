@@ -35,6 +35,10 @@ class stko_interface:
     def new_local_axes_id(self) -> int:
         return self.doc.localAxes.getlastkey(0) + 1
 
+    # get the selection set id of the last selection set in the document + 1
+    def new_selection_set_id(self) -> int:
+        return self.doc.selectionSets.getlastkey(0) + 1
+
     # get the geometry id of the last geometry in the document + 1
     def new_geometry_id(self) -> int:
         return self.doc.geometries.getlastkey(0) + 1
@@ -67,6 +71,14 @@ class stko_interface:
     def add_local_axes(self, locax : MpcLocalAxes):
         # adds a new local axes to the STKO document
         self.doc.addLocalAxes(locax)
+        self.doc.commitChanges()
+        self.doc.dirty = True
+        App.processEvents()
+
+    # adds a new selection set to the STKO document
+    def add_selection_set(self, selset : MpcSelectionSet):
+        # adds a new selection set to the STKO document
+        self.doc.addSelectionSet(selset)
         self.doc.commitChanges()
         self.doc.dirty = True
         App.processEvents()
