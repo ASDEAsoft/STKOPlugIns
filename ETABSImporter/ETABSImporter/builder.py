@@ -1273,6 +1273,11 @@ class builder:
 
     # build an eigenvalue analysis step
     def _build_eigen(self, name : str):
+        # define num_modes based on the mode4_ratio in the load case dynamic
+        num_modes = 6
+        for _, lc in self.etabs_doc.load_cases_dynamic.items():
+            if lc.mode4_ratio > num_modes:
+                num_modes = lc.mode4_ratio
         # create a new analysis step
         step = MpcAnalysisStep()
         step.id = self.stko.new_analysis_step_id()
@@ -1280,7 +1285,7 @@ class builder:
         # define xobject
         meta = self.stko.doc.metaDataAnalysisStep('Analyses.eigen')
         xobj = MpcXObject.createInstanceOf(meta)
-        xobj.getAttribute('numEigenvalues').integer = 6
+        xobj.getAttribute('numEigenvalues').integer = num_modes
         # set xobj
         step.XObject = xobj
         # add the analysis step to the document
@@ -1296,6 +1301,108 @@ class builder:
         xobj.getAttribute('-print').boolean = True
         xobj.getAttribute('-file').boolean = True
         xobj.getAttribute('reportFileName').string = f'{step.name}.modal'
+        # set xobj
+        step.XObject = xobj
+        # add the analysis step to the document
+        self.stko.add_analysis_step(step)
+        step.commitXObjectChanges()
+
+    # build the damping step
+    def _build_damping(self, lc : load_case_dynamic):
+        # create a new analysis step
+        step = MpcAnalysisStep()
+        step.id = self.stko.new_analysis_step_id()
+        step.name = f'Damping - {lc.name}'
+        # define xobject
+        # now we implement it as a tcl custom script to mimick the ETABS behavior
+        meta = self.stko.doc.metaDataAnalysisStep('Misc_commands.customCommand')
+        xobj = MpcXObject.createInstanceOf(meta)
+        xobj.getAttribute('TCLscript').string = f'''
+# User inputs
+set Mode4Ratio {lc.mode4_ratio} ;# Index of reference mode (1-based)
+set ProTimeVal1 {lc.pro_time_val1} ;# Scale factor for F1
+set ProTimeVal2 {lc.pro_time_val2} ;# Scale factor for F2
+set ProDamping1 {lc.pro_damping1} ;# Damping ratio at F1
+set ProDamping2 {lc.pro_damping2} ;# Damping ratio at F2
+
+puts "Defining Rayleigh Damping..."
+puts "    Mode4Ratio : $Mode4Ratio "
+puts "   ProTimeVal1 : $ProTimeVal1"
+puts "   ProTimeVal2 : $ProTimeVal2"
+puts "   ProDamping1 : $ProDamping1"
+puts "   ProDamping2 : $ProDamping2"
+
+# Find first .modal file in current directory
+set modalFile ""
+foreach f [glob *.modal] {{
+    set modalFile $f
+    break
+}}
+
+if {{$modalFile eq ""}} {{
+    puts "No .modal file found in current directory."
+    exit
+}}
+puts "   Using modal file: $modalFile"
+
+# Open .modal file
+set in [open $modalFile "r"]
+set lines [split [read $in] "\n"]
+close $in
+
+# Parse frequencies
+set freqs {{}}
+set inEigen 0
+foreach line $lines {{
+    if {{[string match "*EIGENVALUE ANALYSIS*" $line]}} {{
+        set inEigen 1
+    }} elseif {{$inEigen && [regexp {{^\s*\d+\s+[\d.eE+-]+\s+[\d.eE+-]+\s+([\d.eE+-]+)}} $line match freq]}} {{
+        lappend freqs $freq
+    }} elseif {{$inEigen && [string match "*TOTAL MASS*" $line]}} {{
+        break
+    }}
+}}
+
+set nFreqs [llength $freqs]
+if {{$Mode4Ratio > $nFreqs}} {{
+    puts "Error: Mode4Ratio ($Mode4Ratio) exceeds number of modes found ($nFreqs)."
+    exit
+}}
+
+# Get reference frequency
+set FR [lindex $freqs [expr {{$Mode4Ratio - 1}}]]
+
+# Compute F1 and F2
+set F1 [expr {{$ProTimeVal1 * $FR}}]
+set F2 [expr {{$ProTimeVal2 * $FR}}]
+
+# Convert to angular frequencies
+set w1 [expr {{2.0 * 3.141592653589793 * $F1}}]
+set w2 [expr {{2.0 * 3.141592653589793 * $F2}}]
+
+# Damping ratios
+set xi1 $ProDamping1
+set xi2 $ProDamping2
+
+# Compute Rayleigh coefficients
+set numerator_alpha [expr {{$w1 * $w2 * ($w2 * $xi1 - $w1 * $xi2)}}]
+set denominator [expr {{$w2*$w2 - $w1*$w1}}]
+set CM [expr {{2.0 * $numerator_alpha / $denominator}}]
+
+set numerator_beta [expr {{$w2 * $xi2 - $w1 * $xi1}}]
+set CK [expr {{2.0 * $numerator_beta / $denominator}}]
+
+# Output results
+puts "Reference Frequency (FR): $FR Hz"
+puts "F1: $F1 Hz"
+puts "F2: $F2 Hz"
+puts "CM (alpha): $CM"
+puts "CK (beta):  $CK"
+
+# define OpenSees command
+# rayleigh $alphaM $betaK $betaKinit $betaKcomm
+rayleigh $CM 0.0 $CK 0.0
+'''
         # set xobj
         step.XObject = xobj
         # add the analysis step to the document
@@ -1375,6 +1482,8 @@ class builder:
             # add the analysis step to the document
             self.stko.add_analysis_step(step)
             step.commitXObjectChanges()
+        # build the damping step
+        self._build_damping(lc)
         # return the result
         return retval
 
