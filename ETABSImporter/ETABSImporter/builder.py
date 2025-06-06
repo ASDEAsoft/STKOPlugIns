@@ -796,8 +796,6 @@ class builder:
                         asd_shell.name = f'Shell Element Property {area_mat_name}'
                         meta = self.stko.doc.metaDataElementProperty('shell.ASDShellQ4')
                         xobj = MpcXObject.createInstanceOf(meta)
-                        if self.etabs_doc.kinematics != 'None':
-                            xobj.getAttribute('Kinematics').string = 'Corotational'
                         asd_shell.XObject = xobj
                         self.stko.add_element_property(asd_shell)
                         asd_shell.commitXObjectChanges()
