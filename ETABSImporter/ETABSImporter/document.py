@@ -269,7 +269,7 @@ class document:
         self.tolerance = 1.0e-6
         # penalty value for the model
         self.penalty_hinges = 1.0e12
-        # the kinematic type: Linear or P-Delta (TODO: ask kristijan)
+        # the kinematic type: (None, P-Delta, Large Displacements)
         self.kinematics : str = ''
 
     # return the string representation of the document

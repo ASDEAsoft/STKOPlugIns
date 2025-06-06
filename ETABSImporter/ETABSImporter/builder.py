@@ -10,7 +10,6 @@ from collections import defaultdict
 
 class _globals:
     fix_labels = ('Ux', 'Uy', 'Uz', 'Rx', 'Ry', 'Rz/3D')
-    # TODO: ask kristian if this is correct
     uniform_excitation_dir_map = {
         'U1' : 'dx',
         'U2' : 'dy',
@@ -75,6 +74,7 @@ class builder:
         self._area_property_map : Dict[str, Union[MpcProperty, MpcElementProperty]] = {}
         self._frame_section_map : Dict[str, MpcProperty] = {}
         self._frame_nonlinear_hinge_map : Dict[str, MpcProperty] = {}
+        self._frame_nonlinear_stiff_mat : MpcProperty = None
 
         # keep track of stko indices for different entities
         # the default linear time series
@@ -796,7 +796,7 @@ class builder:
                         asd_shell.name = f'Shell Element Property {area_mat_name}'
                         meta = self.stko.doc.metaDataElementProperty('shell.ASDShellQ4')
                         xobj = MpcXObject.createInstanceOf(meta)
-                        if self.etabs_doc.kinematics != 'Linear': #TODO: check if this is correct
+                        if self.etabs_doc.kinematics != 'None':
                             xobj.getAttribute('Kinematics').string = 'Corotational'
                         asd_shell.XObject = xobj
                         self.stko.add_element_property(asd_shell)
@@ -818,12 +818,12 @@ class builder:
             # common properties
             xobj.getAttribute('E').quantityScalar.value = mat.E1 if mat else 0.0
             xobj.getAttribute('G').quantityScalar.value = mat.G12 if mat else 0.0
-            xobj.getAttribute('A_modifier').real = section.AMod
-            xobj.getAttribute('Asy_modifier').real = section.AsyMod
-            xobj.getAttribute('Asz_modifier').real = section.AszMod
-            xobj.getAttribute('Iyy_modifier').real = section.IyyMod
-            xobj.getAttribute('Izz_modifier').real = section.IzzMod
-            xobj.getAttribute('J_modifier').real = section.JMod
+            xobj.getAttribute('A_modifier').real = max(1.0e-3, section.AMod)
+            xobj.getAttribute('Asy_modifier').real = max(1.0e-3, section.AsyMod)
+            xobj.getAttribute('Asz_modifier').real = max(1.0e-3, section.AszMod)
+            xobj.getAttribute('Iyy_modifier').real = max(1.0e-3, section.IyyMod)
+            xobj.getAttribute('Izz_modifier').real = max(1.0e-3, section.IzzMod)
+            xobj.getAttribute('J_modifier').real = max(1.0e-3, section.JMod)
             xobj.getAttribute('Y/section_offset').quantityScalar.value = section.Oy
             xobj.getAttribute('Z/section_offset').quantityScalar.value = section.Oz
             xobj.getAttribute('Shear Deformable').boolean = True # make it shear deformable
@@ -870,6 +870,17 @@ class builder:
             prop.commitXObjectChanges()
             # add the hinge to the map
             self._frame_nonlinear_hinge_map[name] = prop
+        # now we need an elastic material for the Vz direction of the hinge
+        prop = MpcProperty()
+        prop.id = self.stko.new_physical_property_id()
+        prop.name = 'Frame Hinge Elastic Vz Material'
+        meta = self.stko.doc.metaDataPhysicalProperty('materials.uniaxial.Elastic')
+        xobj = MpcXObject.createInstanceOf(meta)
+        xobj.getAttribute('E').quantityScalar.value = self.etabs_doc.penalty_hinges
+        prop.XObject = xobj
+        self.stko.add_physical_property(prop)
+        prop.commitXObjectChanges()
+        self._frame_nonlinear_stiff_mat = prop
 
     # assignes the frame sections and hinges to the frames in STKO
     def _assign_frame_sections(self):
@@ -891,8 +902,8 @@ class builder:
                 xobj = MpcXObject.createInstanceOf(meta)
                 if self.etabs_doc.kinematics == 'P-Delta':
                     xobj.getAttribute('transfType').string = 'PDelta'
-                elif self.etabs_doc.kinematics == 'Corotational':
-                    xobj.getAttribute('transfType').string = 'Corotational' # TODO: check if this is correct
+                elif self.etabs_doc.kinematics == 'Large Displacements':
+                    xobj.getAttribute('transfType').string = 'Corotational'
                 prop.XObject = xobj
                 self.stko.add_element_property(prop)
                 prop.commitXObjectChanges()
@@ -948,7 +959,7 @@ class builder:
                     xobj = MpcXObject.createInstanceOf(meta)
                     xobj.getAttribute('Beam Property').index = section_prop.id
                     xobj.getAttribute('Vy Material').index = hinge_prop.id
-                    xobj.getAttribute('Vz Material').index = hinge_prop.id # TODO: same or not in both directions?
+                    xobj.getAttribute('Vz Material').index = self._frame_nonlinear_stiff_mat.id
                     xobj.getAttribute('K').real = self.etabs_doc.penalty_hinges
                     prop.XObject = xobj
                     self.stko.add_physical_property(prop)
@@ -1336,8 +1347,8 @@ rayleigh $CM 0.0 $CK 0.0
             xobj.getAttribute('TCLscript').string = f'''
 # User inputs
 set Mode4Ratio {lc.mode4_ratio} ;# Index of reference mode (1-based)
-set ProTimeVal1 {lc.pro_time_val1} ;# Scale factor for F1
-set ProTimeVal2 {lc.pro_time_val2} ;# Scale factor for F2
+set ProTimeVal1 {lc.pro_time_val1 if lc.pro_by == 'Frequency Ratio' else 1.0/lc.pro_time_val1} ;# Scale factor for F1
+set ProTimeVal2 {lc.pro_time_val2 if lc.pro_by == 'Frequency Ratio' else 1.0/lc.pro_time_val2} ;# Scale factor for F2
 set ProDamping1 {lc.pro_damping1} ;# Damping ratio at F1
 set ProDamping2 {lc.pro_damping2} ;# Damping ratio at F2
 

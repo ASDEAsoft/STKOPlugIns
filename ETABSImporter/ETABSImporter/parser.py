@@ -300,7 +300,6 @@ class parser:
             I3Mod = float(words[26])
             I2Mod = float(words[27])
             # check shape
-            # TODO: wait for FRAME_SECTION_DIMENSIONS_RECTANGULAR
             shape = frame_section.shape_type.generic
             shape_info = None
             shape_data = all_shape_info.get(name, None)
@@ -519,13 +518,22 @@ class parser:
                 num_steps = int(words[12])
                 step_size = float(words[13])
                 pro_by = words[14]
-                mass_coeff = float(words[15])
-                stiff_coeff = float(words[16])
-                pro_time_val1 = float(words[17])
-                pro_damping1 = float(words[18])
-                pro_time_val2 = float(words[19])
-                pro_damping2 = float(words[20])
-                mode4_ratio = int(words[21])
+                if pro_by == 'Direct':
+                    mass_coeff = float(words[15])
+                    stiff_coeff = float(words[16])
+                    pro_time_val1 = 0.0
+                    pro_damping1 = 0.0
+                    pro_time_val2 = 0.0
+                    pro_damping2 = 0.0
+                    mode4_ratio = 0
+                else:
+                    mass_coeff = 0.0
+                    stiff_coeff = 0.0
+                    pro_time_val1 = float(words[17])
+                    pro_damping1 = float(words[18])
+                    pro_time_val2 = float(words[19])
+                    pro_damping2 = float(words[20])
+                    mode4_ratio = int(words[21])
                 # create the load case
                 lc = load_case_dynamic(name, load_type, num_steps, step_size,
                                     pro_by, mass_coeff, stiff_coeff, pro_time_val1, pro_damping1,
