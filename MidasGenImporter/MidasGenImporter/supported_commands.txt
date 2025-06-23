@@ -1,0 +1,57 @@
+    *VERSION
+    *UNIT    ; Unit System
+*PROJINFO    ; Project Information
+*STRUCTYPE    ; Structure Type
+*REBAR-MATL-CODE    ; Rebar Material Code
+*GRIDLINE    ; Define Line Grid
+*NODE    ; Nodes
+*ELEMENT    ; Elements
+*GROUP    ; Group
+*MATERIAL    ; Material
+*MATL-COLOR
+*SECTION    ; Section
+*SECT-COLOR
+*DGN-SECT
+*THICKNESS    ; Thickness
+*THIK-COLOR
+*ELEM-SRF    ; Element Stiffness Scale Factor
+*WALL-SSRF    ; Wall Stiffness Scale Factor
+*PLATE-SSRF    ; Plate Stiffness Scale Factor
+*STLDCASE    ; Static Load Cases
+*STORY    ; Story
+*STORY-CHANGED-INFO    ; Story Changed Information
+*STORY-ECCEN    ; Story Eccentricity
+*CONSTRAINT    ; Supports
+*ELASTICLINK    ; Elastic Link
+*RLS-DIAP    ; Diaphragm Disconnect
+*LOADTOMASS    ; Load to Mass
+*EIGEN-CTRL    ; Eigenvalue Analysis Control
+*USE-STLD, Gk0
+*SELFWEIGHT    ; Self Weight
+*CONLOAD    ; Nodal Loads
+*BEAMLOAD    ; Element Beam Loads
+*USE-STLD, Gk1
+*CONLOAD    ; Nodal Loads
+*BEAMLOAD    ; Element Beam Loads
+*PRESSURE    ; Pressure Loads
+*USE-STLD, Qk-C3
+*CONLOAD    ; Nodal Loads
+*PRESSURE    ; Pressure Loads
+*USE-STLD, Qk-H
+*CONLOAD    ; Nodal Loads
+*USE-STLD, Dummy X
+*CONLOAD    ; Nodal Loads
+*USE-STLD, Dummy Y
+*CONLOAD    ; Nodal Loads
+*FLOADTYPE    ; Define Floor Load Type
+*FLOAD-COLOR
+*FLOORLOAD    ; Floor Loads
+*SFUNCTION    ; Spectrum Function
+*SPLDCASE    ; Spectrum Load Cases
+*MEMBER    ; Member
+*LOADCOMB    ; Combinations
+*ORTHOEFF-LC    ; Load cases for Orthogonal Effect
+*BLDG-CTRL    ; Building Control Data
+*LC-COLOR    ; Diagram Color for Load Case
+*DGN-MATL    ; Modify Steel(Concrete) Material
+*ENDDATA
