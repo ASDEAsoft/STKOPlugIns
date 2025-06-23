@@ -15,25 +15,29 @@ class structure_type:
 
 # The frame class is used to store the connectivity of a frame member
 class frame:
-    def __init__(self, nodes:List[int], angle:float=0.0):
+    def __init__(self, mat:int, sec:int, nodes:List[int], angle:float=0.0):
         if len(nodes) != 2:
             raise ValueError('Frame must have exactly 2 nodes')
+        self.mat = mat
+        self.sec = sec
         self.nodes = nodes
         self.angle = angle
     def __str__(self):
-        return '({:8},{:8}), A={:.3f}°'.format(*self.nodes, self.angle)
+        return '({:8},{:8}), M = {:8}, S = {:8}, A = {:.3f}°'.format(*self.nodes, self.mat, self.sec, self.angle)
     def __repr__(self):
         return self.__str__()
 
 # The area class is used to store the connectivity of a slab member
 class area:
-    def __init__(self, nodes:List[int], angle:float=0.0):
-        if len(nodes) != 4:
-            raise ValueError('Area must have exactly 4 nodes')
+    def __init__(self, mat:int, sec:int, nodes:List[int], angle:float=0.0):
+        if len(nodes) != 4 and len(nodes) != 3:
+            raise ValueError('Area must have exactly 3 or 4 nodes')
+        self.mat = mat
+        self.sec = sec
         self.nodes = nodes
         self.angle = angle
     def __str__(self):
-        return '({:8},{:8},{:8},{:8}), A = {:.3f}°'.format(*self.nodes, self.angle)
+        return '({}), A = {:.3f}°'.format(self.nodes, self.angle)
     def __repr__(self):
         return self.__str__()
 

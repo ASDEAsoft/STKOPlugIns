@@ -44,8 +44,9 @@ class parser:
         self._parse_units()
         self._parse_structure_type()
         self._parse_nodes()
-        self._parse_frames()
-        self._parse_areas()
+        #self._parse_frames()
+        #self._parse_areas()
+        self._parse_elements()
         self._parse_elastic_materials()
         self._parse_nonlinear_materials()
         self._parse_area_sections()
@@ -116,6 +117,50 @@ class parser:
             nodes = [int(words[i]) for i in range(1, 5)]
             angle = float(words[-1])
             self.doc.areas[id] = area(nodes, angle)
+    
+    # this function parses the elements and adds them to the document
+    def _parse_elements(self):
+        '''
+        ; iEL, TYPE, iMAT, iPRO, iN1, iN2, ANGLE, iSUB,                     ; Frame  Element
+        ; iEL, TYPE, iMAT, iPRO, iN1, iN2, ANGLE, iSUB, EXVAL, EXVAL2, bLMT ; Comp/Tens Truss
+        ; iEL, TYPE, iMAT, iPRO, iN1, iN2, iN3, iN4, iSUB, iWID , LCAXIS    ; Planar Element
+        ; iEL, TYPE, iMAT, iPRO, iN1, iN2, iN3, iN4, iN5, iN6, iN7, iN8     ; Solid  Element
+        TODO: wall is like plate but with an extra argument... what's that?
+        TODO: what's iWID in plate and wall?
+        TODO: plates have only 10 args, why 11 in the comment?
+        '''
+        all_types = set()
+        for item in self.commands['*ELEMENT']:
+            words = _split_line(item)
+            # index and type + material and property for all elements
+            if len(words) < 4:
+                raise Exception('Invalid element line: {}, expecting at least 4 values'.format(item))
+            id = int(words[0])
+            type = words[1]
+            mat = int(words[2])
+            pro = int(words[3])
+            # depending on the type, we have different number of nodes
+            if type == 'BEAM':
+                if len(words) != 8:
+                    raise Exception('Invalid element line: {}, expecting 8 values for BEAM'.format(item))
+                nodes = [int(words[i]) for i in range(4, 6)]
+                angle = float(words[6])
+                self.doc.frames[id] = frame(mat, pro, nodes, angle)
+            elif type == 'PLATE' or type == 'WALL':
+                if len(words) < 10:
+                    raise Exception('Invalid element line: {}, expecting at least 10 values for PLATE'.format(item))
+                nodes = [int(words[i]) for i in range(4, 8)]
+                nodes = [i for i in nodes if i in self.doc.vertices]  # filter out nodes not in vertices (trianles have an extra node at 0)
+                isub = int(words[8]) # not used
+                # 9 is iWID in wall?????
+                angle = float(words[-1]) # not sure is an angle... TODO: ask nicola
+                if angle != 0.0:
+                    raise Exception('Invalid element line: {}, angle? should be 0.0 for PLATE'.format(item))
+                self.doc.areas[id] = area(mat, pro, nodes, angle)
+            else:
+                raise Exception('Unknown element type: {}'.format(type))
+        print('Parsed {} frames'.format(len(self.doc.frames)))
+        print('Parsed {} areas'.format(len(self.doc.areas)))
     
     # this function parses the rigid diaphragms and adds them to the document
     def _parse_diaphragms(self):
