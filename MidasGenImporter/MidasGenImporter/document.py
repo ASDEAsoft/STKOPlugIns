@@ -3,6 +3,16 @@ from collections import defaultdict
 import math
 from PyMpc import *
 
+# some global infoprmation about the structure
+class structure_type:
+    def __init__(self, self_weight:bool, grav:float):
+        self.self_weight = self_weight
+        self.grav = grav
+    def __str__(self):
+        return 'self_weight={}, grav={}'.format(self.self_weight, self.grav)
+    def __repr__(self):
+        return self.__str__()
+
 # The frame class is used to store the connectivity of a frame member
 class frame:
     def __init__(self, nodes:List[int], angle:float=0.0):
@@ -219,6 +229,8 @@ class document:
         self.name : str = name
         # units for force, length, temperature
         self.units : Tuple[str,str,str] = ('N', 'M', 'C')
+        # the structure type (self_weight, grav)
+        self.struct_type : structure_type = structure_type(False, 0.0)
         # The vertices dictionary is used to store the coordinates of the points in 3D space
         self.vertices : Dict[int, Math.vec3] = {}
         # The frames dictionary is used to store the connectivity of the frame members

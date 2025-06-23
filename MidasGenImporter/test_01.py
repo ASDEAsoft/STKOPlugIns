@@ -4,20 +4,20 @@ sys.path.append('C:/Develop/Utility/STKO-install/data/win64')
 from PyMpc import *
 
 import importlib
-import ETABSImporter.parser
-import ETABSImporter.builder
-import ETABSImporter.stko_interface
-import ETABSImporter.stko_interface_plain
-import ETABSImporter.stko_interface_gui
-import ETABSImporter.document
-importlib.reload(ETABSImporter.document)
-importlib.reload(ETABSImporter.parser)
-importlib.reload(ETABSImporter.builder)
-importlib.reload(ETABSImporter.stko_interface)
-importlib.reload(ETABSImporter.stko_interface_plain)
-importlib.reload(ETABSImporter.stko_interface_gui)
-from ETABSImporter.stko_interface_plain import stko_interface_plain
-from ETABSImporter.stko_interface_gui import stko_interface_gui
+import MidasGenImporter.parser
+import MidasGenImporter.builder
+import MidasGenImporter.stko_interface
+import MidasGenImporter.stko_interface_plain
+import MidasGenImporter.stko_interface_gui
+import MidasGenImporter.document
+importlib.reload(MidasGenImporter.document)
+importlib.reload(MidasGenImporter.parser)
+importlib.reload(MidasGenImporter.builder)
+importlib.reload(MidasGenImporter.stko_interface)
+importlib.reload(MidasGenImporter.stko_interface_plain)
+importlib.reload(MidasGenImporter.stko_interface_gui)
+from MidasGenImporter.stko_interface_plain import stko_interface_plain
+from MidasGenImporter.stko_interface_gui import stko_interface_gui
 
 # create the stko interface
 # stko = stko_interface_plain(

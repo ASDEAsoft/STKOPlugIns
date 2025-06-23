@@ -1,7 +1,7 @@
-    *VERSION
+? *VERSION
     *UNIT    ; Unit System
-*PROJINFO    ; Project Information
-*STRUCTYPE    ; Structure Type
+? *PROJINFO    ; Project Information
+    *STRUCTYPE    ; Structure Type
 *REBAR-MATL-CODE    ; Rebar Material Code
 *GRIDLINE    ; Define Line Grid
 *NODE    ; Nodes

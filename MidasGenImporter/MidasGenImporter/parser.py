@@ -5,6 +5,9 @@ import os
 import math
 from PyMpc import *
 
+def _split_line(contents:str):
+    return [pline for pline in (line.strip() for line in contents.split(',')) if pline]
+
 # The parser class is used to parse the ETABS text file and build the document
 class parser:
     
@@ -20,12 +23,17 @@ class parser:
         # initialize command map
         self.commands = defaultdict(list)
         # build command map
+        # TODO: handle mult-line commands
         with open(fname, 'r') as ifile:
-            lines = [pline for pline in (line.strip() for line in ifile.readlines()) if (pline and not pline.startswith('#'))]
+            # first handle the multi-line commands (\ at the end of the line)
+            # read all, replace \\n with \n, then split by \n)
+            contents = ifile.read().replace('\\\n', '').replace('\\\r\n', '')
+            lines = [pline for pline in (line.strip() for line in contents.splitlines()) if (pline and not pline.startswith(';'))]
             value = None
             for line in lines:
                 if line.startswith('*'):
-                    value = self.commands[line]
+                    the_command = line.split(';')[0].strip()  # remove comments
+                    value = self.commands[the_command]
                 else:
                     if value is not None:
                         value.append(line)
@@ -34,6 +42,7 @@ class parser:
     
     def _parse(self):
         self._parse_units()
+        self._parse_structure_type()
         self._parse_nodes()
         self._parse_frames()
         self._parse_areas()
@@ -54,14 +63,26 @@ class parser:
         self._parse_load_case_static()
         self._parse_load_case_time_history()
     
+    # this function parses the units and adds them to the document
+    # the units are stored in the document as a dictionary
     def _parse_units(self):
-        # this function parses the units and adds them to the document
-        # the units are stored in the document as a dictionary
-        for item in self.commands['* UNITS']:
-            words = tuple(i.strip() for i in item.split(','))
-            if len(words) != 3:
+        for item in self.commands['*UNIT']:
+            words = _split_line(item)
+            if len(words) != 4:
                 raise Exception('Invalid units line: {}, expecting 3 values'.format(item))
-            self.doc.units = words
+            self.doc.units = (words[0], words[1], words[3]) # skip the third value (heat)
+            if self.interface is not None:
+                self.interface.send_message(f'Units: {self.doc.units}', mtype=stko_interface.message_type.INFO)
+
+    # this function parses the structure information and adds it to the document
+    def _parse_structure_type(self):
+        for item in self.commands['*STRUCTYPE']:
+            words = _split_line(item)
+            if len(words) != 10:
+                raise Exception('Invalid structure type line: {}, expecting 10 values'.format(item))
+            self.doc.struct_type = structure_type(words[4] == 'YES', float(words[5]))
+            if self.interface is not None:
+                self.interface.send_message(f'Structure type: {self.doc.struct_type}', mtype=stko_interface.message_type.INFO)
 
     # this function parses the nodes and adds them to the document
     # the nodes are stored in the document as vertices
