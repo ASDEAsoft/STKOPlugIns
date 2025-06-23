@@ -87,13 +87,17 @@ class parser:
     # this function parses the nodes and adds them to the document
     # the nodes are stored in the document as vertices
     def _parse_nodes(self):
-        for item in self.commands['* JOINT_COORDINATES']:
-            words = item.split(',')
+        for item in self.commands['*NODE']:
+            words = _split_line(item)
+            if len(words) != 4:
+                raise Exception('Invalid node line: {}, expecting 4 values'.format(item))
             id = int(words[0])
             x = float(words[1])
             y = float(words[2])
             z = float(words[3])
             self.doc.vertices[id] = Math.vec3(x,y,z)
+        if self.interface is not None:
+            self.interface.send_message(f'Parsed {len(self.doc.vertices)} nodes', mtype=stko_interface.message_type.INFO)
     
     # this function parses the frames and adds them to the document
     def _parse_frames(self):

@@ -2,9 +2,9 @@
     *UNIT    ; Unit System
 ? *PROJINFO    ; Project Information
     *STRUCTYPE    ; Structure Type
-*REBAR-MATL-CODE    ; Rebar Material Code
-*GRIDLINE    ; Define Line Grid
-*NODE    ; Nodes
+? *REBAR-MATL-CODE    ; Rebar Material Code
+? *GRIDLINE    ; Define Line Grid
+    *NODE    ; Nodes
 *ELEMENT    ; Elements
 *GROUP    ; Group
 *MATERIAL    ; Material
