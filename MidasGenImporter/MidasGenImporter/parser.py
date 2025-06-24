@@ -44,8 +44,6 @@ class parser:
         self._parse_units()
         self._parse_structure_type()
         self._parse_nodes()
-        #self._parse_frames()
-        #self._parse_areas()
         self._parse_elements()
         self._parse_elastic_materials()
         self._parse_nonlinear_materials()
@@ -99,25 +97,7 @@ class parser:
             self.doc.vertices[id] = Math.vec3(x,y,z)
         if self.interface is not None:
             self.interface.send_message(f'Parsed {len(self.doc.vertices)} nodes', mtype=stko_interface.message_type.INFO)
-    
-    # this function parses the frames and adds them to the document
-    def _parse_frames(self):
-        for item in self.commands['* FRAMES_CONNECTIVITY']:
-            words = item.split(',')
-            id = int(words[0])
-            nodes = [int(words[i]) for i in range(1, 3)]
-            angle = float(words[-1])
-            self.doc.frames[id] = frame(nodes, angle)
-    
-    # this function parses the areas and adds them to the document
-    def _parse_areas(self):
-        for item in self.commands['* AREAS_CONNECTIVITY']:
-            words = item.split(',')
-            id = int(words[0])
-            nodes = [int(words[i]) for i in range(1, 5)]
-            angle = float(words[-1])
-            self.doc.areas[id] = area(nodes, angle)
-    
+     
     # this function parses the elements and adds them to the document
     def _parse_elements(self):
         '''
@@ -125,9 +105,7 @@ class parser:
         ; iEL, TYPE, iMAT, iPRO, iN1, iN2, ANGLE, iSUB, EXVAL, EXVAL2, bLMT ; Comp/Tens Truss
         ; iEL, TYPE, iMAT, iPRO, iN1, iN2, iN3, iN4, iSUB, iWID , LCAXIS    ; Planar Element
         ; iEL, TYPE, iMAT, iPRO, iN1, iN2, iN3, iN4, iN5, iN6, iN7, iN8     ; Solid  Element
-        TODO: wall is like plate but with an extra argument... what's that?
-        TODO: what's iWID in plate and wall?
-        TODO: plates have only 10 args, why 11 in the comment?
+        what's iWID in plate and wall? (WALL ID, not used)
         '''
         all_types = set()
         for item in self.commands['*ELEMENT']:
@@ -151,11 +129,7 @@ class parser:
                     raise Exception('Invalid element line: {}, expecting at least 10 values for PLATE'.format(item))
                 nodes = [int(words[i]) for i in range(4, 8)]
                 nodes = [i for i in nodes if i in self.doc.vertices]  # filter out nodes not in vertices (trianles have an extra node at 0)
-                isub = int(words[8]) # not used
-                # 9 is iWID in wall?????
                 angle = float(words[-1]) # not sure is an angle... TODO: ask nicola
-                if angle != 0.0:
-                    raise Exception('Invalid element line: {}, angle? should be 0.0 for PLATE'.format(item))
                 self.doc.areas[id] = area(mat, pro, nodes, angle)
             else:
                 raise Exception('Unknown element type: {}'.format(type))
