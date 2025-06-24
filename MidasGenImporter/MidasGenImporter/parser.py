@@ -1,5 +1,6 @@
 from MidasGenImporter.document import *
 from MidasGenImporter.stko_interface import stko_interface
+from MidasGenImporter.units_utils import unit_system
 from collections import defaultdict
 import os
 import math
@@ -183,34 +184,63 @@ class parser:
         if self.interface is not None:
             self.interface.send_message(f'Parsed {len(self.doc.groups)} groups', mtype=stko_interface.message_type.INFO)    
 
-    # this function parses the rigid diaphragms and adds them to the document
-    def _parse_diaphragms(self):
-        # TODO: add the rigid diaphragm to the document only if it's rigid in ETABS (we need a flag)
-        for item in self.commands['* JOINT_RIGID_DIAPHRAGMS']:
-            words = item.split(',"')
-            name = words[0]
-            # the last one is the retained id
-            items = [int(i.strip()) for i in words[1].replace('"', '').replace('[', '').replace(']', '').replace("'", '').split(',')]
-            self.doc.diaphragms[name] = items
-    
     # this function parses the elastic material and adds it to the document as elastic_material
     def _parse_elastic_materials(self):
-        for item in self.commands['* MATERIALS_ELASTIC_PROPERTIES']:
-            words = item.split(',')
-            name = words[0]
-            density_type = words[1]
-            unit_weight = float(words[2])
-            unit_mass = float(words[3])
-            e1 = float(words[4])
-            try:
-                g12 = float(words[5])
-                u12 = float(words[6])
-            except:
-                g12 = 0.0
-                u12 = 0.0
-            a1 = float(words[7])
-            # add the material to the document
-            self.doc.elastic_materials[name] = elastic_material(name, density_type, unit_weight, unit_mass, e1, g12, u12, a1)
+        '''
+        *MATERIAL    ; Material
+        ; iMAT, TYPE, MNAME, SPHEAT, HEATCO, PLAST, TUNIT, bMASS, DAMPRATIO, [DATA1]           ; STEEL, CONC, ALUMINUM, USER
+        ; iMAT, TYPE, MNAME, SPHEAT, HEATCO, PLAST, TUNIT, bMASS, DAMPRATIO, [DATA2], [DATA2]  ; SRC
+        ; [DATA1] : 1, STANDARD, CODE/PRODUCT, DB, USEELAST, ELAST
+        ; [DATA1] : 2, ELAST, POISN, THERMAL, DEN, MASS
+        ; [DATA1] : 3, Ex, Ey, Ez, Tx, Ty, Tz, Sxy, Sxz, Syz, Pxy, Pxz, Pyz, DEN, MASS         ; Orthotropic
+        ; [DATA2] : 1, STANDARD, CODE/PRODUCT, DB, USEELAST, ELAST or 2, ELAST, POISN, THERMAL, DEN, MASS
+        '''
+        '''
+        Now we support only the first line (STEEL, CONC, or USER):
+        ; iMAT, TYPE, MNAME, SPHEAT, HEATCO, PLAST, TUNIT, bMASS, DAMPRATIO, [DATA1]           ; STEEL, CONC, ALUMINUM, USER
+        and either one of:
+        ; [DATA1] : 1, STANDARD, CODE/PRODUCT, DB, USEELAST, ELAST
+        ; [DATA1] : 2, ELAST, POISN, THERMAL, DEN, MASS
+        based on the first item in the DATA1 list.
+        '''
+        for item in self.commands['*MATERIAL']:
+            words = _split_line(item, skip_empty=False)  # we may have empty strings (for empty DATA1)
+            if len(words) < 10:
+                raise Exception('Invalid material line: {}, expecting at least 10 values'.format(item))
+            mat_id = int(words[0])
+            mat_type = words[1]
+            mat_name = words[2]
+            if mat_type not in ('STEEL', 'CONC', 'USER'):
+                raise Exception('Unknown material type: {}'.format(mat_type))
+            # now we just need E, poisson, and sw from DATA1
+            data1 = words[9:]
+            data1_type = int(data1[0])
+            if data1_type == 1:
+                # from standard... we can take E from the last item
+                E = float(data1[-1])
+                if mat_type == 'STEEL':
+                    poiss =  0.3  # default value for steel
+                    sw = 78.5
+                elif mat_type == 'CONC':
+                    poiss = 0.2
+                    sw = 25.0  # default value for concrete
+                else:
+                    raise Exception('Invalid material type: {} for DATA1 type = 1'.format(mat_type))
+                sw *= unit_system.F(1.0, 'KN', self.doc.units[0])/unit_system.L(1.0, 'M', self.doc.units[1])**3  # specific weight in kN/m^3
+            elif data1_type == 2:
+                # from user data
+                if len(data1) < 6:
+                    raise Exception('Invalid material line: {}, expecting at least 6 values for DATA1 type = 2'.format(item))
+                E = float(data1[1])
+                poiss = float(data1[2])
+                sw = float(data1[4])
+            else:
+                raise Exception('Unknown DATA1 type: {}'.format(data1_type))
+            rho = sw / self.doc.struct_type.grav
+            # create the elastic material
+            self.doc.elastic_materials[mat_id] = elastic_material(mat_name, E, poiss, rho)
+        if self.interface is not None:
+            self.interface.send_message(f'Parsed {len(self.doc.elastic_materials)} elastic materials', mtype=stko_interface.message_type.INFO)
 
     # this function parses the nonlinear materials and adds it to the document as nonlinear_material
     def _parse_nonlinear_materials(self):
@@ -455,6 +485,16 @@ class parser:
             self.doc.frame_nonlinear_hinges_assignment[hinge_name].append(frame_id)
             # fill the inverse map
             self.doc.frame_nonlinear_hinges_assignment_inverse[frame_id] = hinge_name
+
+    # this function parses the rigid diaphragms and adds them to the document
+    def _parse_diaphragms(self):
+        # TODO: add the rigid diaphragm to the document only if it's rigid in ETABS (we need a flag)
+        for item in self.commands['* JOINT_RIGID_DIAPHRAGMS']:
+            words = item.split(',"')
+            name = words[0]
+            # the last one is the retained id
+            items = [int(i.strip()) for i in words[1].replace('"', '').replace('[', '').replace(']', '').replace("'", '').split(',')]
+            self.doc.diaphragms[name] = items
 
     # this function parses the restraints and adds them to the document
     def _parse_restraints(self):

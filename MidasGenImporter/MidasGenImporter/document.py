@@ -54,17 +54,13 @@ class group:
 
 # The elastic material class is used to store the properties of an elastic material
 class elastic_material:
-    def __init__(self, name:str, dens_type:str, sw:float, rho:float, E1:float, G12:float, U12:float, A1:float):
+    def __init__(self, name:str, E:float, poiss:float, rho:float):
         self.name = name
-        self.dens_type = dens_type
-        self.sw = sw
-        self.rho = rho
-        self.E1 = E1
-        self.G12 = G12
-        self.U12 = U12
-        self.A1 = A1
+        self.E = E  # Young's modulus
+        self.poiss = poiss  # Poisson's ratio
+        self.rho = rho  # density
     def __str__(self):
-        return '{} {} {} {} {} {} {} {}'.format(self.name, self.dens_type, self.sw, self.rho, self.E1, self.G12, self.U12, self.A1)
+        return '{} {} {} {}'.format(self.name, self.E, self.poiss, self.rho)
     def __repr__(self):
         return self.__str__()
 
