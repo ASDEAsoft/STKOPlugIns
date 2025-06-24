@@ -41,6 +41,17 @@ class area:
     def __repr__(self):
         return self.__str__()
 
+# The group class is used to store the groups of nodes and elements
+class group:
+    def __init__(self, name:str, nodes:List[int], elements:List[int]):
+        self.name = name
+        self.nodes = nodes
+        self.elements = elements
+    def __str__(self):
+        return 'Group: {}, Nodes: {}, Elements: {}'.format(self.name, self.nodes, self.elements)
+    def __repr__(self):
+        return self.__str__()
+
 # The elastic material class is used to store the properties of an elastic material
 class elastic_material:
     def __init__(self, name:str, dens_type:str, sw:float, rho:float, E1:float, G12:float, U12:float, A1:float):
@@ -241,6 +252,8 @@ class document:
         self.frames : Dict[int, frame] = {}
         # The areas dictionary is used to store the connectivity of the slab members
         self.areas : Dict[int, area] = {}
+        # groups of nodes and elements
+        self.groups : Dict[str, group] = {} 
         # The elastic materials dictionary is used to store the properties of the elastic materials
         self.elastic_materials : Dict[str, elastic_material] = {}
         # The nonlinear materials dictionary is used to store the properties of the nonlinear materials

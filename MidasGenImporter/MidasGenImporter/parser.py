@@ -5,8 +5,34 @@ import os
 import math
 from PyMpc import *
 
-def _split_line(contents:str):
-    return [pline for pline in (line.strip() for line in contents.split(',')) if pline]
+def _split_line(contents:str, skip_empty:bool=True) -> List[str]:
+    return [pline for pline in (line.strip() for line in contents.split(',')) if (pline or not skip_empty)]
+
+def _mgt_string_to_id_or_range(s: str) -> List[int]:
+    """
+    Converts a string like '1to3 5' to a list of integers [1, 2, 3, 5].
+    It can handle ranges like '1to3' and single numbers like '5'.
+    It should also handle ranges with strides like '197to722by175'
+    """
+    result = []
+    for part in s.split():
+        part = part.strip()
+        if not part:
+            continue
+        if 'to' in part:
+            start, end = part.split('to')
+            start = int(start)
+            if 'by' in end:
+                end, stride = map(int, end.split('by'))
+                # generate the range with stride
+                result.extend(range(start, end + 1, stride))
+            else:
+                # generate the range without stride
+                end = int(end)
+                result.extend(range(start, end + 1))
+        else:
+            result.append(int(part))
+    return result
 
 # The parser class is used to parse the ETABS text file and build the document
 class parser:
@@ -45,6 +71,7 @@ class parser:
         self._parse_structure_type()
         self._parse_nodes()
         self._parse_elements()
+        self._parse_groups()
         self._parse_elastic_materials()
         self._parse_nonlinear_materials()
         self._parse_area_sections()
@@ -68,7 +95,7 @@ class parser:
         for item in self.commands['*UNIT']:
             words = _split_line(item)
             if len(words) != 4:
-                raise Exception('Invalid units line: {}, expecting 3 values'.format(item))
+                raise Exception('Invalid units line: {}, expecting 4 values'.format(item))
             self.doc.units = (words[0], words[1], words[3]) # skip the third value (heat)
             if self.interface is not None:
                 self.interface.send_message(f'Units: {self.doc.units}', mtype=stko_interface.message_type.INFO)
@@ -136,6 +163,26 @@ class parser:
         print('Parsed {} frames'.format(len(self.doc.frames)))
         print('Parsed {} areas'.format(len(self.doc.areas)))
     
+    # this function parses the groups and adds them to the document
+    def _parse_groups(self):
+        '''
+        *GROUP    ; Group
+        ; NAME, NODE_LIST, ELEM_LIST, PLANE_TYPE
+        '''
+        for item in self.commands['*GROUP']:
+            words = _split_line(item, skip_empty=False) # we may have empty strings (for empty node or elem lists)
+            if len(words) < 3:
+                raise Exception('Invalid group line: {}, expecting at least 3 values'.format(item))
+            name = words[0]
+            node_list = _mgt_string_to_id_or_range(words[1])
+            elem_list = _mgt_string_to_id_or_range(words[2])
+            # create the group
+            group_obj = group(name, node_list, elem_list)
+            # add it to the document
+            self.doc.groups[name] = group_obj
+        if self.interface is not None:
+            self.interface.send_message(f'Parsed {len(self.doc.groups)} groups', mtype=stko_interface.message_type.INFO)    
+
     # this function parses the rigid diaphragms and adds them to the document
     def _parse_diaphragms(self):
         # TODO: add the rigid diaphragm to the document only if it's rigid in ETABS (we need a flag)
