@@ -76,6 +76,7 @@ class parser:
         self._parse_groups()
         self._parse_elastic_materials()
         self._parse_frame_sections()
+        self._parse_thickness()
         
         self._parse_area_sections()
         self._parse_area_sections_assignment()
@@ -283,8 +284,38 @@ class parser:
         if self.interface is not None:
             self.interface.send_message(f'Parsed {len(self.doc.sections)} frame sections', mtype=stko_interface.message_type.INFO)
 
+    # this function parses the thickness of the area sections
+    def _parse_thickness(self):
+        '''
+        mgt command:
+        *THICKNESS    ; Thickness
+        ; iTHK, TYPE, NAME, bSAME, THIK-IN, THIK-OUT, bOFFSET, OFFTYPE, VALUE ; TYPE=VALUE
+        '''
+        for item in self.commands['*THICKNESS']:
+            words = _split_line(item)
+            if len(words) < 3:
+                raise Exception('Invalid thickness line: {}, expecting at least 3 values'.format(item))
+            thk_id = int(words[0])
+            thk_type = words[1]
+            thk_name = words[2]
+            if thk_type != 'VALUE':
+                raise Exception('Unknown thickness type: {}'.format(thk_type))
+            bsame = words[3] == 'YES'
+            in_thickness = float(words[4])
+            out_thickness = in_thickness if bsame else float(words[5])
+            boffset = words[6] == 'YES'
+            offset_type = int(words[7]) #TODO: ask nicola what this is
+            offset = float(words[8]) if boffset else 0.0
+            # create the thickness object
+            thick = thickness(thk_name, in_thickness, out_thickness, offset, offset_type)
+            # add it to the document
+            self.doc.thicknesses[thk_id] = thick
+        if self.interface is not None:
+            self.interface.send_message(f'Parsed {len(self.doc.thicknesses)} thicknesses', mtype=stko_interface.message_type.INFO)
+
+
     # called by the _parse_area_sections function if the MVLEM Notes is used
-    def _parse_area_sections_mvlem(self, asec:area_section, notes:str):
+    def _parse_area_sections_mvlem(self, asec:thickness, notes:str):
         '''
         typical command:
         MVLEM 4 -thick 36*4 -width 9*4 -rho 0.0145*4 -matConcrete Conc_for_Walls*4 -matSteel Steel_for_Walls*4 -ShearK 1684540.78005847
@@ -358,9 +389,9 @@ class parser:
                     self.interface.send_message(f'[AREA_SECTION_PROPERTIES {name}]: mmod and wmod should be one', 
                                                 mtype=stko_interface.message_type.WARNING)
                 # creae the area material
-                asec = area_section(name, type, material, thickness, f11, m11, is_wall=is_wall)
+                asec = thickness(name, type, material, thickness, f11, m11, is_wall=is_wall)
                 # add the area material to the document
-                self.doc.area_sections[name] = asec
+                self.doc.thicknesses[name] = asec
                 # parse notes if available
                 if len(words) > 14:
                     notes = words[14].strip()

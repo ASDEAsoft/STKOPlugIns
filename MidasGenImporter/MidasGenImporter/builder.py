@@ -647,7 +647,7 @@ class builder:
             _shearK_map[shearK] = prop
             return prop
 
-        for name, section in self.etabs_doc.area_sections.items():
+        for name, section in self.etabs_doc.thicknesses.items():
             # obtain the material
             mat = self.etabs_doc.elastic_materials.get(section.material, None)
             # generate the area section

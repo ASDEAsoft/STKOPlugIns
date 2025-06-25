@@ -77,25 +77,22 @@ class section:
         self.offset_y = offset_y  # offset in the y direction
         self.offset_z = offset_z  # offset in the z direction
 
-
-
-
-
-# The area section class is used to store the properties of an area material
-class area_section:
-    def __init__(self, name:str, type:str, material:str, thickness:float, Fmod:float, Mmod:float, is_wall:bool=False):
+# The thickness class is used to store the properties of an area material
+class thickness:
+    def __init__(self, name:str, in_thick:float, out_thick:float, offset:float, offset_type:int):
         self.name = name
-        self.type = type
-        self.material = material
-        self.thickness = thickness
-        self.Fmod = Fmod
-        self.Mmod = Mmod
-        self.is_wall = is_wall
-        self.conversion_info : Dict[str, Any] = None # conversion info for the area section, if needed
+        self.in_thick = in_thick  # thickness of the area in the in-plane
+        self.out_thick = out_thick  # thickness of the area in the out-of-plane
+        self.offset = offset  # offset of the area in the out-of-plane
+        self.offset_type = offset_type  # type of the offset
     def __str__(self):
-        return '{} {} {} {} {} {} {}'.format(self.name, self.type, self.material, self.thickness, self.Fmod, self.Mmod, 'Wall' if self.is_wall else 'Slab')
+        return '{} {} {} {} {}'.format(self.name, self.in_thick, self.out_thick, self.offset, self.offset_type)
     def __repr__(self):
         return self.__str__()
+
+
+
+
 
 # The frame nonlinear hinge class is used to store the properties of a frame nonlinear hinge
 class frame_nonlinear_hinge:
@@ -226,10 +223,10 @@ class document:
         self.elastic_materials : Dict[str, elastic_material] = {}
         # The frame section dictionary is used to store the properties of the frame materials
         self.sections : Dict[str, section] = {}
+        # The thickness dictionary is used to store the properties of the area cross sections
+        self.thicknesses : Dict[str, thickness] = {}
 
 
-        # The area section dictionary is used to store the properties of the area materials
-        self.area_sections : Dict[str, area_section] = {}
         # The area section assignment dictionary (key = area section name, value = list of area ids in ETABS)
         self.area_sections_assignment : DefaultDict[str, List[int]] = defaultdict(list)
         # The inverse of the area section assignment dictionary (key = area id, value = area section name)

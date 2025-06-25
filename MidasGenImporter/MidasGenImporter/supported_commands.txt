@@ -5,9 +5,8 @@
     *GROUP    ; Group
     *MATERIAL    ; Material
     *SECTION    ; Section
+    *THICKNESS    ; Thickness
 
-*THICKNESS    ; Thickness
-*THIK-COLOR
 *ELEM-SRF    ; Element Stiffness Scale Factor
 *WALL-SSRF    ; Wall Stiffness Scale Factor
 *PLATE-SSRF    ; Plate Stiffness Scale Factor
