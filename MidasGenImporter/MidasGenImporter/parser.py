@@ -265,11 +265,11 @@ class parser:
                 offset_data = words[3:10]
                 shape = words[12]
                 if shape == 'SB':
-                    shape = frame_section.shape_type.SB
+                    shape = section.shape_type.SB
                 elif shape == 'T':
-                    shape = frame_section.shape_type.T
+                    shape = section.shape_type.T
                 elif shape == 'L':
-                    shape = frame_section.shape_type.L
+                    shape = section.shape_type.L
                 else:
                     raise Exception('Unknown shape type: {}'.format(shape))
                 data1 = words[13:23]
@@ -277,11 +277,11 @@ class parser:
                     raise Exception('Invalid DATA1 type: {}, expecting 2 for DBUSER'.format(data1[0]))
                 shape_info = [float(i) for i in data1[1:]]
                 offset_y, offset_z = get_section_offset(shape, shape_info, offset_data)
-                self.doc.frame_sections[sec_id] = frame_section(sec_name, shape, shape_info, offset_y, offset_z)
+                self.doc.sections[sec_id] = section(sec_name, shape, shape_info, offset_y, offset_z)
             else:
                 raise Exception('Unknown section type: {}'.format(sec_type))
         if self.interface is not None:
-            self.interface.send_message(f'Parsed {len(self.doc.frame_sections)} frame sections', mtype=stko_interface.message_type.INFO)
+            self.interface.send_message(f'Parsed {len(self.doc.sections)} frame sections', mtype=stko_interface.message_type.INFO)
 
     # called by the _parse_area_sections function if the MVLEM Notes is used
     def _parse_area_sections_mvlem(self, asec:area_section, notes:str):

@@ -2,7 +2,7 @@
 This file contains utility functions for parsing and processing sections in the MidasGenImporter plugin.
 '''
 
-from MidasGenImporter.document import frame_section
+from MidasGenImporter.document import section
 from typing import Tuple, List
 
 class _globals:
@@ -78,9 +78,9 @@ def get_section_centroid(shape: int, shape_data:List[float]) -> Tuple[float, flo
     Raises:
         ValueError: If the provided shape type is not supported.
     """
-    if shape == frame_section.shape_type.SB:
+    if shape == section.shape_type.SB:
         return (0.0, 0.0)
-    elif shape == frame_section.shape_type.L:
+    elif shape == section.shape_type.L:
         H, B, tw, tf = shape_data[:4]
         # compute the areas (same as T-section)
         A_flange = B * tf
@@ -98,7 +98,7 @@ def get_section_centroid(shape: int, shape_data:List[float]) -> Tuple[float, flo
         centroid_y -= B / 2
         centroid_z -= H / 2
         return (centroid_y, centroid_z)
-    elif shape == frame_section.shape_type.T:
+    elif shape == section.shape_type.T:
         H, B, tw, tf = shape_data[:4]
         # compute the centroid for a T-section knowing that the 
         # flange is a rectangle B x tf
@@ -228,7 +228,7 @@ def test_T_section():
     tw = 10.0
     tf = 80.0
     shape_data = [H, B, tw, tf]
-    centroid_y, centroid_z = get_section_centroid(frame_section.shape_type.T, shape_data)
+    centroid_y, centroid_z = get_section_centroid(section.shape_type.T, shape_data)
     # create y,z points for the T-section wrt the center
     Y = [-tw/2, tw/2, tw/2, B/2, B/2, -B/2, -B/2, -tw/2, -tw/2]
     Z = [-H/2, -H/2, H/2-tf, H/2-tf, H/2, H/2, H/2-tf, H/2-tf, -H/2]
@@ -246,7 +246,7 @@ def test_L_section():
     tw = 10.0
     tf = 10.0
     shape_data = [H, B, tw, tf]
-    centroid_y, centroid_z = get_section_centroid(frame_section.shape_type.L, shape_data)
+    centroid_y, centroid_z = get_section_centroid(section.shape_type.L, shape_data)
     # create y,z points for the T-section wrt the center
     Y = [-B/2, -B/2+tw, -B/2+tw, B/2, B/2, -B/2, -B/2]
     Z = [-H/2, -H/2, H/2-tf, H/2-tf, H/2, H/2, -H/2]
@@ -263,10 +263,10 @@ def test_section(shape:int, shape_info:List[float], offset_data:List[str]):
     offset_y, offset_z = get_section_offset(shape, shape_info, offset_data)
     # Visualization can be added here if needed
     H, B, tw, tf = shape_info[:4]
-    if shape == frame_section.shape_type.T:
+    if shape == section.shape_type.T:
         Y = [-tw/2, tw/2, tw/2, B/2, B/2, -B/2, -B/2, -tw/2, -tw/2]
         Z = [-H/2, -H/2, H/2-tf, H/2-tf, H/2, H/2, H/2-tf, H/2-tf, -H/2]
-    elif shape == frame_section.shape_type.L:
+    elif shape == section.shape_type.L:
         Y = [-B/2, -B/2+tw, -B/2+tw, B/2, B/2, -B/2, -B/2]
         Z = [-H/2, -H/2, H/2-tf, H/2-tf, H/2, H/2, -H/2]
     else:

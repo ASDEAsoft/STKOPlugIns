@@ -721,7 +721,7 @@ class builder:
 
     # builds the frame sections in STKO
     def _build_frame_sections(self):
-        for name, section in self.etabs_doc.frame_sections.items():
+        for name, section in self.etabs_doc.sections.items():
             # obtain the material
             mat = self.etabs_doc.elastic_materials.get(section.material, None)
             # generate the frame section
@@ -743,7 +743,7 @@ class builder:
             xobj.getAttribute('Z/section_offset').quantityScalar.value = section.Oz
             xobj.getAttribute('Shear Deformable').boolean = True # make it shear deformable
             # define the section
-            if section.shape == frame_section.shape_type.rectangle:
+            if section.shape == section.shape_type.rectangle:
                 LY, LZ = section.shape_info[:]
                 stko_section = MpcBeamSection(
                     MpcBeamSectionShapeType.Rectangular,

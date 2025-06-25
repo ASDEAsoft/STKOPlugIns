@@ -64,17 +64,22 @@ class elastic_material:
     def __repr__(self):
         return self.__str__()
 
-# The nonlinear material class is used to store the properties of a nonlinear material
-class nonlinear_material:
-    def __init__(self, name:str, mat_type:str, pos_env:List[Tuple[float,float]], neg_env:List[Tuple[float,float]]):
+# The section class is used to store the properties of a frame cross-section
+class section:
+    class shape_type:
+        SB = 1
+        L = 2
+        T = 3
+    def __init__(self, name:str, type:int, shape_info:List[float], offset_y:float, offset_z:float):
         self.name = name
-        self.mat_type = mat_type
-        self.pos_env = pos_env
-        self.neg_env = neg_env
-    def __str__(self):
-        return '{} {} {} {}'.format(self.name, self.mat_type, self.pos_env, self.neg_env)
-    def __repr__(self):
-        return self.__str__()
+        self.type = type  # type of the section (SB, L, T)
+        self.shape_info = shape_info  # list of floats with the shape information
+        self.offset_y = offset_y  # offset in the y direction
+        self.offset_z = offset_z  # offset in the z direction
+
+
+
+
 
 # The area section class is used to store the properties of an area material
 class area_section:
@@ -91,19 +96,6 @@ class area_section:
         return '{} {} {} {} {} {} {}'.format(self.name, self.type, self.material, self.thickness, self.Fmod, self.Mmod, 'Wall' if self.is_wall else 'Slab')
     def __repr__(self):
         return self.__str__()
-
-# The frame section class is used to store the properties of a frame material
-class frame_section:
-    class shape_type:
-        SB = 1
-        L = 2
-        T = 3
-    def __init__(self, name:str, type:int, shape_info:List[float], offset_y:float, offset_z:float):
-        self.name = name
-        self.type = type  # type of the section (SB, L, T)
-        self.shape_info = shape_info  # list of floats with the shape information
-        self.offset_y = offset_y  # offset in the y direction
-        self.offset_z = offset_z  # offset in the z direction
 
 # The frame nonlinear hinge class is used to store the properties of a frame nonlinear hinge
 class frame_nonlinear_hinge:
@@ -232,6 +224,9 @@ class document:
         self.groups : Dict[str, group] = {} 
         # The elastic materials dictionary is used to store the properties of the elastic materials
         self.elastic_materials : Dict[str, elastic_material] = {}
+        # The frame section dictionary is used to store the properties of the frame materials
+        self.sections : Dict[str, section] = {}
+
 
         # The area section dictionary is used to store the properties of the area materials
         self.area_sections : Dict[str, area_section] = {}
@@ -239,8 +234,7 @@ class document:
         self.area_sections_assignment : DefaultDict[str, List[int]] = defaultdict(list)
         # The inverse of the area section assignment dictionary (key = area id, value = area section name)
         self.area_sections_assignment_inverse : Dict[int, str] = {}
-        # The frame section dictionary is used to store the properties of the frame materials
-        self.frame_sections : Dict[str, frame_section] = {}
+        
         # The frame section assignment dictionary (key = frame section name, value = list of frame ids in ETABS)
         self.frame_sections_assignment : DefaultDict[str, List[int]] = defaultdict(list)
         # The inverse of the frame section assignment dictionary (key = frame id, value = frame section name)
@@ -379,7 +373,7 @@ class document:
             section_name = self.frame_sections_assignment_inverse.get(frame_id, None)
             if section_name is None:
                 continue
-            section = self.frame_sections[section_name]
+            section = self.sections[section_name]
             material = self.elastic_materials.get(section.material, None)
             if material is None:
                 continue
