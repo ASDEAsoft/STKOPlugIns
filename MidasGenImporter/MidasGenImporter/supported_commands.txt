@@ -4,10 +4,8 @@
     *ELEMENT    ; Elements
     *GROUP    ; Group
     *MATERIAL    ; Material
-*MATL-COLOR
-*SECTION    ; Section
-*SECT-COLOR
-*DGN-SECT
+    *SECTION    ; Section
+
 *THICKNESS    ; Thickness
 *THIK-COLOR
 *ELEM-SRF    ; Element Stiffness Scale Factor

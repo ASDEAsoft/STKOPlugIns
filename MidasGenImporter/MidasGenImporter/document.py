@@ -95,35 +95,15 @@ class area_section:
 # The frame section class is used to store the properties of a frame material
 class frame_section:
     class shape_type:
-        generic = 0
-        rectangle = 1
-    def __init__(self, name:str, shape:shape_type, material:str,
-                 A:float, Iyy:float, Izz:float, J:float, Sy:float, Sz:float,
-                 Oy:float, Oz:float,
-                 AMod:float, AsyMod:float, AszMod:float, IyyMod:float, IzzMod:float, JMod:float,
-                 shape_info:List[float]=None):
+        SB = 1
+        L = 2
+        T = 3
+    def __init__(self, name:str, type:int, shape_info:List[float], offset_y:float, offset_z:float):
         self.name = name
-        self.shape = shape
-        self.material = material
-        self.A = A # cross-sectional area
-        self.Iyy = Iyy # moment of inertia about y-axis
-        self.Izz = Izz # moment of inertia about z-axis
-        self.J = J # torsional constant
-        self.Sy = Sy # shear correction factor in the y-axis
-        self.Sz = Sz # shear correction factor in the z-axis
-        self.Oy = Oy # offset in the y-axis
-        self.Oz = Oz # offset in the z-axis
-        self.AMod = AMod # modifier for the cross-sectional area
-        self.AsyMod = AsyMod # modifier for shear area in the y-axis
-        self.AszMod = AszMod # modifier for shear area in the z-axis
-        self.IyyMod = IyyMod # modifier for moment of inertia about y-axis
-        self.IzzMod = IzzMod # modifier for moment of inertia about z-axis
-        self.JMod = JMod # modifier for torsional constant
-        self.shape_info = shape_info # additional information about the shape (depending on the shape type)
-    def __str__(self):
-        return f'{self.name} {self.shape} {self.material} {self.A} {self.Iyy} {self.Izz} {self.J} {self.Sy} {self.Sz} {self.Oy} {self.Oz} {self.AMod} {self.AsyMod} {self.AszMod} {self.IyyMod} {self.IzzMod} {self.JMod}'
-    def __repr__(self):
-        return self.__str__()
+        self.type = type  # type of the section (SB, L, T)
+        self.shape_info = shape_info  # list of floats with the shape information
+        self.offset_y = offset_y  # offset in the y direction
+        self.offset_z = offset_z  # offset in the z direction
 
 # The frame nonlinear hinge class is used to store the properties of a frame nonlinear hinge
 class frame_nonlinear_hinge:

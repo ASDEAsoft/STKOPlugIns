@@ -1,6 +1,7 @@
 from MidasGenImporter.document import *
 from MidasGenImporter.stko_interface import stko_interface
 from MidasGenImporter.units_utils import unit_system
+from MidasGenImporter.section_utils import get_section_offset, test_section
 from collections import defaultdict
 import os
 import math
@@ -74,10 +75,12 @@ class parser:
         self._parse_elements()
         self._parse_groups()
         self._parse_elastic_materials()
+        self._parse_frame_sections()
+        
         self._parse_nonlinear_materials()
         self._parse_area_sections()
         self._parse_area_sections_assignment()
-        self._parse_frame_sections()
+        
         self._parse_frame_sections_assignment()
         self._parse_frame_nonlinear_hinges()
         self._parse_frame_nonlinear_hinges_assignment()
@@ -242,6 +245,45 @@ class parser:
         if self.interface is not None:
             self.interface.send_message(f'Parsed {len(self.doc.elastic_materials)} elastic materials', mtype=stko_interface.message_type.INFO)
 
+    # this function parses the frame sections and adds them to the document
+    def _parse_frame_sections(self):
+        '''
+        *SECTION    ; Section
+        ; iSEC, TYPE, SNAME, [OFFSET], bSD, bWE, SHAPE, [DATA1]                   ; 1st line - DB/USER
+        ; [DATA1] : DB-NAME or 2, D1, D2, D3, D4, D5, D6, D7, D8, D9, D10
+        ; [OFFSET] : OFFSET, iCENT, iREF, iHORZ, HUSER, iVERT, VUSER
+        '''
+        for item in self.commands['*SECTION']:
+            words = _split_line(item, skip_empty=False)
+            if len(words) < 3:
+                raise Exception('Invalid section line: {}, expecting at least 3 values'.format(item))
+            sec_id = int(words[0])
+            sec_type = words[1]
+            sec_name = words[2]
+            if sec_type == 'DBUSER':
+                if len(words) < 24:
+                    raise Exception('Invalid section line: {}, expecting at least 23 values for DBUSER'.format(item))
+                offset_data = words[3:10]
+                shape = words[12]
+                if shape == 'SB':
+                    shape = frame_section.shape_type.SB
+                elif shape == 'T':
+                    shape = frame_section.shape_type.T
+                elif shape == 'L':
+                    shape = frame_section.shape_type.L
+                else:
+                    raise Exception('Unknown shape type: {}'.format(shape))
+                data1 = words[13:23]
+                if data1[0] != '2':
+                    raise Exception('Invalid DATA1 type: {}, expecting 2 for DBUSER'.format(data1[0]))
+                shape_info = [float(i) for i in data1[1:]]
+                offset_y, offset_z =  get_section_offset(shape, shape_info, offset_data)
+                self.doc.frame_sections[sec_id] = frame_section(sec_name, sec_type, shape, shape_info, offset_y, offset_z)
+            else:
+                raise Exception('Unknown section type: {}'.format(sec_type))
+        if self.interface is not None:
+            self.interface.send_message(f'Parsed {len(self.doc.frame_sections)} frame sections', mtype=stko_interface.message_type.INFO)
+
     # this function parses the nonlinear materials and adds it to the document as nonlinear_material
     def _parse_nonlinear_materials(self):
         # store a temporary dictionary of nonlinear materials with point,strain,stress
@@ -383,56 +425,6 @@ class parser:
             self.doc.area_sections_assignment[material_name].append(area_id)
             # fill the inverse map
             self.doc.area_sections_assignment_inverse[area_id] = material_name
-
-    # this function parses the frame sections and adds them to the document
-    def _parse_frame_sections(self):
-        # first parse shape information if available
-        # key is the name of the frame section, value is a tuple of shape type and shape info data
-        all_shape_info : Dict[str, Tuple[frame_section.shape_type, List[float]]] = {}
-        # TODO: we assume t2,t3 but ETABS has a bug on it
-        # rectangular
-        for item in self.commands['* FRAME_SECTION_DIMENSIONS_RECTANGULAR']:
-            words = item.split(',')
-            name = words[0]
-            values = [float(i) for i in words[1:]]
-            all_shape_info[name] = (frame_section.shape_type.rectangle, values)
-        # TODO: add other shapes
-        # now parse the frame sections
-        for item in self.commands['* FRAME_SECTION_PROPERTIES']:
-            # this is the line, use it for parsing:
-            # Name,Material,Shape,Area,J,I33,I22,I23,As2,As3,S33Pos,S33Neg,S22Pos,S22Neg,Z33,Z22,R33,R22,CGOffset3,CGOffset2,PNAOffset3,PNAOffset2,AMod,A2Mod,A3Mod,JMod,I3Mod,I2Mod,MMod,WMod
-            # Note: some of the values are not used in the document, skipped here...
-            words = item.split(',')
-            name = words[0]
-            material = words[1]
-            _shape = words[2]
-            A = float(words[3])
-            J = float(words[4])
-            I33 = float(words[5])
-            I22 = float(words[6])
-            As2 = float(words[8])
-            As3 = float(words[9])
-            CGOffset3 = float(words[18])
-            CGOffset2 = float(words[19])
-            AMod = float(words[22])
-            A2Mod = float(words[23])
-            A3Mod = float(words[24])
-            JMod = float(words[25])
-            I3Mod = float(words[26])
-            I2Mod = float(words[27])
-            # check shape
-            shape = frame_section.shape_type.generic
-            shape_info = None
-            shape_data = all_shape_info.get(name, None)
-            if shape_data is not None:
-                shape, shape_info = shape_data
-            # compute shear correction factors
-            S2 = As2 / A if A > 0.0 else 0.0
-            S3 = As3 / A if A > 0.0 else 0.0
-            # create the frame section
-            fsec = frame_section(name, shape, material, A, I22, I33, J, S2, S3, CGOffset2, CGOffset3, AMod, A2Mod, A3Mod, I2Mod, I3Mod, JMod, shape_info=shape_info)
-            # add the frame section to the document
-            self.doc.frame_sections[name] = fsec
 
     # this function parses the frame section assignments and adds them to the document
     def _parse_frame_sections_assignment(self):
