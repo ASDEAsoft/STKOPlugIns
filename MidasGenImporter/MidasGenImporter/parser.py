@@ -277,8 +277,8 @@ class parser:
                 if data1[0] != '2':
                     raise Exception('Invalid DATA1 type: {}, expecting 2 for DBUSER'.format(data1[0]))
                 shape_info = [float(i) for i in data1[1:]]
-                offset_y, offset_z =  get_section_offset(shape, shape_info, offset_data)
-                self.doc.frame_sections[sec_id] = frame_section(sec_name, sec_type, shape, shape_info, offset_y, offset_z)
+                offset_y, offset_z = get_section_offset(shape, shape_info, offset_data)
+                self.doc.frame_sections[sec_id] = frame_section(sec_name, shape, shape_info, offset_y, offset_z)
             else:
                 raise Exception('Unknown section type: {}'.format(sec_type))
         if self.interface is not None:
