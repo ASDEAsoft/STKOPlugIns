@@ -70,7 +70,6 @@ class builder:
         self._area_map : Dict[int, _geometry_map_item] = {}
         self._diaphram_map : Dict[str, _interaction_map_item] = {}
         self._elastic_material_map : Dict[str, Tuple[MpcProperty, MpcProperty]] = {} # value = tuple (uniaxial material, NDMaterial)
-        self._nonlinear_material_map : Dict[str, MpcProperty] = {} # value = uniaxial material TODO if necessary make an NDMaterial
         self._area_property_map : Dict[str, Union[MpcProperty, MpcElementProperty]] = {}
         self._frame_section_map : Dict[str, MpcProperty] = {}
         self._frame_nonlinear_hinge_map : Dict[str, MpcProperty] = {}
@@ -97,7 +96,6 @@ class builder:
             self._build_local_axes()
             self._build_definitions()
             self._build_elastic_materials()
-            self._build_nonlinear_materials()
             self._build_area_sections()
             self._assign_area_sections()
             self._build_frame_sections()
@@ -627,87 +625,6 @@ class builder:
             P2 = prop
             # add the material to the map
             self._elastic_material_map[name] = (P1, P2)
-
-    # builds the uniaxial nonlinear materials in STKO (TODO: make generic material in STKO professional)
-    # from the ETABS material properties
-    def _build_nonlinear_materials(self):
-        for name, mat in self.etabs_doc.nonlinear_materials.items():
-            # generate the uniaxial material
-            prop = MpcProperty()
-            prop.id = self.stko.new_physical_property_id()
-            prop.name = f'Nonlinear Material {name} (1D)'
-            if mat.mat_type == 'Steel':
-                meta = self.stko.doc.metaDataPhysicalProperty('materials.uniaxial.HystereticSM')
-                xobj = MpcXObject.createInstanceOf(meta)
-                # positive envelope TODO: warning to 7
-                np = len(mat.pos_env)
-                if np < 2 or np > 7:
-                    raise Exception(f'Nonlinear material {name} has an invalid number of points in the positive envelope: {np} (2 to 7 allowed for HystereticSM)')
-                xobj.getAttribute('ep').quantityVector.value = [i for i,_ in mat.pos_env]
-                xobj.getAttribute('sp').quantityVector.value = [i for _,i in mat.pos_env]
-                # negative...
-                if mat.pos_env != mat.neg_env:
-                    np = len(mat.neg_env)
-                    if np < 2 or np > 7:
-                        raise Exception(f'Nonlinear material {name} has an invalid number of points in the negative envelope: {np} (2 to 7 allowed for HystereticSM)')
-                    xobj.getAttribute('-negEnv').boolean = True
-                    xobj.getAttribute('en').quantityVector.value = [-i for i,_ in mat.neg_env]
-                    xobj.getAttribute('sn').quantityVector.value = [-i for _,i in mat.neg_env]
-                # pinch (default for steel)
-                xobj.getAttribute('-pinch').boolean = True
-                xobj.getAttribute('pinchX').real = 0.3
-                xobj.getAttribute('pinchY').real = 0.5
-            elif mat.mat_type == 'Concrete':
-                meta = self.stko.doc.metaDataPhysicalProperty('materials.uniaxial.ASDConcrete1D')
-                xobj = MpcXObject.createInstanceOf(meta)
-                if len(mat.pos_env) < 1:
-                    raise Exception(f'Nonlinear material {name} has an invalid number of points in the positive envelope: {len(mat.pos_env)} (at least 1 allowed for ASDConcrete1D)')
-                if len(mat.neg_env) < 1:
-                    raise Exception(f'Nonlinear material {name} has an invalid number of points in the negative envelope: {len(mat.neg_env)} (at least 1 allowed for ASDConcrete1D)')
-                Et = mat.pos_env[0][1]/mat.pos_env[0][0] # tangent modulus
-                Ec = mat.neg_env[0][1]/mat.neg_env[0][0] # compressive tangent modulus
-                if abs(Et-Ec) > 1.0e-8:
-                    self.stko.send_message(f'Nonlinear material {name} has different tangent moduli in positive and negative envelopes: {Et} != {Ec} (ASDConcrete1D requires the same, a new point will be added)', 
-                                           mtype=stko_interface.message_type.WARNING)
-                    if Ec > Et:
-                        T = mat.pos_env[0][1]*0.1
-                        mat.pos_env.insert(0, (T/Ec, T))
-                    else:
-                        T = mat.neg_env[0][1]*0.1
-                        mat.neg_env.insert(0, (T/Et, T))
-                xobj.getAttribute('E').quantityScalar.value = Et
-                xobj.getAttribute('Preset').string = 'User-Defined'
-                xobj.getAttribute('Te').quantityVector.value = [i for i,_ in mat.pos_env]
-                xobj.getAttribute('Ts').quantityVector.value = [i for _,i in mat.pos_env]
-                xobj.getAttribute('Td').quantityVector.value = [1.0] * len(mat.pos_env)
-                xobj.getAttribute('Ce').quantityVector.value = [i for i,_ in mat.neg_env]
-                xobj.getAttribute('Cs').quantityVector.value = [i for _,i in mat.neg_env]
-                def _cdam(ei, si):
-                    epl = (ei-si/Ec)
-                    return 1.0-si/(epl*0.5)/Ec if epl > 0.0 else 0.0
-                xobj.getAttribute('Cd').quantityVector.value = [_cdam(ei, si) for ei,si in mat.neg_env] # TODO: customize
-                xobj.getAttribute('autoRegularization').boolean = False # default to not auto regularization
-                xobj.getAttribute('LchRef').quantityScalar.value = unit_system.L(203.0, 'mm', self.etabs_doc.units[1]) # default to 203 mm
-            else:
-                # TODO: if only 3 points and allined make it linear
-                meta = self.stko.doc.metaDataPhysicalProperty('materials.uniaxial.ElasticMultiLinear')
-                xobj = MpcXObject.createInstanceOf(meta)
-                # joint strain points from neg_env (reversed and changed in sign) and pos_env, and put a 0 in the middle.
-                # same for stress points
-                if len(mat.pos_env) < 1:
-                    raise Exception(f'Nonlinear material {name} has an invalid number of points in the positive envelope: {len(mat.pos_env)} (at least 1 allowed for ElasticMultiLinear)')
-                if len(mat.neg_env) < 1:
-                    raise Exception(f'Nonlinear material {name} has an invalid number of points in the negative envelope: {len(mat.neg_env)} (at least 1 allowed for ElasticMultiLinear)')
-                ep = [-i for i,_ in mat.neg_env[::-1]] + [0.0] + [i for i,_ in mat.pos_env]
-                sp = [-i for _,i in mat.neg_env[::-1]] + [0.0] + [i for _,i in mat.pos_env]
-                xobj.getAttribute('strainPoints').quantityVector.value = ep
-                xobj.getAttribute('stressPoints').quantityVector.value = sp
-            # set xobject
-            prop.XObject = xobj
-            self.stko.add_physical_property(prop)
-            prop.commitXObjectChanges()
-            # add the material to the map
-            self._nonlinear_material_map[name] = prop
 
     # builds the area sections in STKO
     def _build_area_sections(self):

@@ -77,7 +77,6 @@ class parser:
         self._parse_elastic_materials()
         self._parse_frame_sections()
         
-        self._parse_nonlinear_materials()
         self._parse_area_sections()
         self._parse_area_sections_assignment()
         
@@ -283,48 +282,6 @@ class parser:
                 raise Exception('Unknown section type: {}'.format(sec_type))
         if self.interface is not None:
             self.interface.send_message(f'Parsed {len(self.doc.frame_sections)} frame sections', mtype=stko_interface.message_type.INFO)
-
-    # this function parses the nonlinear materials and adds it to the document as nonlinear_material
-    def _parse_nonlinear_materials(self):
-        # store a temporary dictionary of nonlinear materials with point,strain,stress
-        # then we will order the points
-        temp : Dict[Tuple[str,str], List[Tuple[float,float]]] = {}
-        for item in self.commands['* MATERIALS_NONLINEAR_PROPERTIES']:
-            words = item.split(',')
-            name = words[0]
-            mat_type = words[1]
-            key = (name, mat_type)
-            strain = float(words[3])
-            stress = float(words[4])
-            item = temp.get(key, None)
-            if item is None:
-                item = []
-                temp[key] = item
-            item.append((strain, stress))
-        # now we have to:
-        # 2. split them into positive and negative (and make them all positive)
-        # 3. sort them
-        # 3. create the nonlinear material
-        # 4. add it to the document
-        for (name, mat_type), points in temp.items():
-            # split the points into positive and negative
-            pos_points = []
-            neg_points = []
-            for strain, stress in points:
-                if strain == 0.0:
-                    # skip the zero point
-                    continue
-                if strain > 0.0:
-                    pos_points.append((strain, stress))
-                else:
-                    neg_points.append((-strain, -stress)) # make them positive
-            # sort the points
-            pos_points.sort(key=lambda x: x[0])
-            neg_points.sort(key=lambda x: x[0])
-            # create the nonlinear material
-            nmat = nonlinear_material(name, mat_type, pos_points, neg_points)
-            # add it to the document
-            self.doc.nonlinear_materials[name] = nmat
 
     # called by the _parse_area_sections function if the MVLEM Notes is used
     def _parse_area_sections_mvlem(self, asec:area_section, notes:str):

@@ -232,8 +232,7 @@ class document:
         self.groups : Dict[str, group] = {} 
         # The elastic materials dictionary is used to store the properties of the elastic materials
         self.elastic_materials : Dict[str, elastic_material] = {}
-        # The nonlinear materials dictionary is used to store the properties of the nonlinear materials
-        self.nonlinear_materials : Dict[str, nonlinear_material] = {}
+
         # The area section dictionary is used to store the properties of the area materials
         self.area_sections : Dict[str, area_section] = {}
         # The area section assignment dictionary (key = area section name, value = list of area ids in ETABS)
