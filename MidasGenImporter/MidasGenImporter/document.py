@@ -312,10 +312,12 @@ class document:
             self.bbox.add(v)
         dl = self.bbox.maxPoint - self.bbox.minPoint
         avg = (dl.x + dl.y + dl.z) / 3.0
-        self.tolerance = 1.0e-6*avg
+        self.tolerance = 1.0e-12*avg
         
     # merge coincident vertices
     def _merge_vertices(self):
+        # store the initial number of vertices
+        num_vertices = len(self.vertices)
         # convert vertices to tuples of int using tol as tolerance
         # to avoid floating point errors
         def _unique_key(v:Math.vec3, tol:float) -> Tuple[int,int,int]:
@@ -365,6 +367,9 @@ class document:
         self.joint_masses = {}
         for k,v in _joint_masses.items():
             self.joint_masses[old_to_new[k]] = v
+        # get the final number of vertices
+        num_vertices_final = len(self.vertices)
+        print(f'Merged {num_merged} vertices, from {num_vertices} to {num_vertices_final} within tolerance {self.tolerance:.3g}')
 
     # compute the penalty for the model based on the stiffness of the elements
     def _compute_penalty(self):
@@ -394,6 +399,8 @@ class document:
             Km3 = 4*E*Izz/L # the moment stiffness that relates the moment to the rotation
             Kmax = max(Kmax, Kaxial, Kv2, Kv3, Km2, Km3)
         # penalty for hinge frame elements
+        if Kmax == 0.0:
+            Kmax = 1.0
         self.penalty_hinges = 10.0 ** (math.ceil(math.log10(Kmax)) + 2)
         if self.penalty_hinges == 0.0:
             self.penalty_hinges = 1.0e12
