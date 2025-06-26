@@ -78,6 +78,7 @@ class parser:
         self._parse_frame_sections()
         self._parse_thickness()
         self._parse_section_scale_factors()
+        self._parse_thickness_scale_factors()
         
         self._parse_area_sections()
         self._parse_area_sections_assignment()
@@ -340,6 +341,72 @@ class parser:
             self.doc.section_scale_factors.append(section_sf)
         if self.interface is not None:
             self.interface.send_message(f'Parsed {len(self.doc.section_scale_factors)} section scale factors', mtype=stko_interface.message_type.INFO)
+
+    # this function parses thickness scale factors
+    def _parse_thickness_scale_factors(self):
+        '''
+        *WALL-SSRF    ; Wall Stiffness Scale Factor
+        ; ELEM_LIST, SHEAR_FACTOR, BENDING_FACTOR, GROUP, AXIAL, OUTTORSION, OUTSHEAR, OUTBENDING
+        '''
+        # note: constraint SHEAR_FACTOR = BENDING_FACTOR
+        # note: OUTTORSION, OUTSHEAR, OUTBENDING are not supported, must be 1.0
+        # TODO: ask nicola if we can use the same scale factors for all walls
+        for item in self.commands['*WALL-SSRF']:
+            words = _split_line(item, skip_empty=False)
+            if len(words) < 8:
+                raise Exception('Invalid thickness scale factors line: {}, expecting at least 8 values'.format(item))
+            elem_list = _mgt_string_to_id_or_range(words[0])
+            shear_factor = float(words[1])
+            bending_factor = float(words[2])
+            if shear_factor != bending_factor and self.interface is not None:
+                self.interface.send_message(f'[WALL-SSRF]: Shear factor {shear_factor} and bending factor {bending_factor} should be equal, ignoring the difference', 
+                                            mtype=stko_interface.message_type.WARNING)
+            axial = float(words[4]) 
+            outtorsion = float(words[5]) 
+            outshear = float(words[6]) 
+            outbending = float(words[7]) 
+            if axial != 1.0 or outtorsion != 1.0 or outshear != 1.0 or outbending != 1.0:
+                if self.interface is not None:
+                    self.interface.send_message(f'[WALL-SSRF]: Axial {axial}, out-of-plane torsion {outtorsion}, out-of-plane shear {outshear}, and out-of-plane bending {outbending} scale factors are not supported, ignoring them',
+                                                mtype=stko_interface.message_type.ERROR)
+            # now consider only in-plane scale and out-of-plane scale factors
+            in_plane = axial
+            out_of_plane = bending_factor
+            # create a thickness scale factors object
+            self.doc.thickness_scale_factors.append(thickness_scale_factors(in_plane, out_of_plane, elements=elem_list))
+        '''
+        *PLATE-SSRF    ; Plate Stiffness Scale Factor
+        ; ELEM_LIST, Axial(Fxx), Axial(Fyy), Shear(Fxy), Bending(Mxx), Bending(Myy), Torsion(Mxy), Shear(Vxx), Shear(Vyy), GROUP
+        '''
+        # similar to the wall scale factors, but with different names, however we build the same thickness scale factors object
+        for item in self.commands['*PLATE-SSRF']:
+            words = _split_line(item, skip_empty=False)
+            if len(words) < 10:
+                raise Exception('Invalid thickness scale factors line: {}, expecting at least 10 values'.format(item))
+            elem_list = _mgt_string_to_id_or_range(words[0])
+            axial_fxx = float(words[1])
+            axial_fyy = float(words[2])
+            shear_fxy = float(words[3])
+            bending_mxx = float(words[4])
+            bending_myy = float(words[5])
+            torsion_mxy = float(words[6])
+            shear_vxx = float(words[7])
+            shear_vyy = float(words[8])
+            # fxx fyy and fxy should be equal to each other
+            if (axial_fxx != axial_fyy or axial_fxx != shear_fxy) and self.interface is not None:
+                self.interface.send_message(f'[PLATE-SSRF]: Axial Fxx {axial_fxx}, Fyy {axial_fyy} and Fxy {shear_fxy} should be equal to each other',
+                                            mtype=stko_interface.message_type.WARNING)
+            # mxx, myy, mxy, vxx and vyy should all be equal to each other
+            if (bending_mxx != bending_myy or bending_mxx != torsion_mxy or bending_mxx != shear_vxx or bending_mxx != shear_vyy) and self.interface is not None:
+                self.interface.send_message(f'[PLATE-SSRF]: Bending Mxx {bending_mxx}, Myy {bending_myy}, Torsion Mxy {torsion_mxy}, Shear Vxx {shear_vxx} and Vyy {shear_vyy} should be equal to each other',
+                                            mtype=stko_interface.message_type.WARNING)
+            # now consider only in-plane scale and out-of-plane scale factors
+            in_plane = axial_fxx  # or axial_fyy or shear_fxy
+            out_of_plane = bending_mxx  # or bending_myy or torsion_mxy
+            # create a thickness scale factors object
+            self.doc.thickness_scale_factors.append(thickness_scale_factors(in_plane, out_of_plane, elements=elem_list))
+        if self.interface is not None:
+            self.interface.send_message(f'Parsed {len(self.doc.thickness_scale_factors)} thickness scale factors', mtype=stko_interface.message_type.INFO)
 
 
 

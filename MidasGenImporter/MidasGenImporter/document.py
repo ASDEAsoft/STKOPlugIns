@@ -109,6 +109,18 @@ class section_scale_factors:
     def __repr__(self):
         return self.__str__()
 
+# The thickness scale factors class is used to store the scale factors for a thickness
+class thickness_scale_factors:
+    def __init__(self, ip_mod:float, oop_mod:float, elements:List[int]=None):
+        self.ip_mod = ip_mod  # in-plane modification factor
+        self.oop_mod = oop_mod # out-of-plane modification factor
+        self.elements = elements if elements is not None else []  # list of elements that use this scale factor
+    def __str__(self):  
+        return  'IP Mod: {}, OOP Mod: {}'.format(self.ip_mod, self.oop_mod)
+    def __repr__(self):
+        return self.__str__()
+
+
 
 
 # The frame nonlinear hinge class is used to store the properties of a frame nonlinear hinge
@@ -242,8 +254,13 @@ class document:
         self.sections : Dict[str, section] = {}
         # The thickness dictionary is used to store the properties of the area cross sections
         self.thicknesses : Dict[str, thickness] = {}
-        # The section scale factors dictionary is used to store the scale factors for the sections
+        # The section scale factors list is used to store the scale factors for the sections
         self.section_scale_factors : List[section_scale_factors] = []
+        # The thickness scale factors list is used to store the scale factors for the thicknesses
+        self.thickness_scale_factors : List[thickness_scale_factors] = []
+
+
+
 
         # The area section assignment dictionary (key = area section name, value = list of area ids in ETABS)
         self.area_sections_assignment : DefaultDict[str, List[int]] = defaultdict(list)
