@@ -90,7 +90,24 @@ class thickness:
     def __repr__(self):
         return self.__str__()
 
-
+# The section scale factors class is used to store the scale factors for a section
+# AREA_SF, ASY_SF, ASZ_SF, IXX_SF, IYY_SF, IZZ_SF, WGT_SF, GROUP, iPart
+class section_scale_factors:
+    def __init__(self, A:float, Asy:float, Asz:float,
+                 Ixx:float, Iyy:float, Izz:float,
+                 elements:List[int]=None):
+        self.A = A # Area scale factor
+        self.Asy = Asy # Asy scale factor
+        self.Asz = Asz # Asz scale factor   
+        self.Ixx = Ixx # Ixx scale factor
+        self.Iyy = Iyy # Iyy scale factor
+        self.Izz = Izz # Izz scale factor
+        self.elements = elements if elements is not None else []  # list of elements that use this scale factor
+    def __str__(self):
+        return 'A: {}, Asy: {}, Asz: {}, Ixx: {}, Iyy: {}, Izz: {}'.format(
+            self.A, self.Asy, self.Asz, self.Ixx, self.Iyy, self.Izz)
+    def __repr__(self):
+        return self.__str__()
 
 
 
@@ -225,7 +242,8 @@ class document:
         self.sections : Dict[str, section] = {}
         # The thickness dictionary is used to store the properties of the area cross sections
         self.thicknesses : Dict[str, thickness] = {}
-
+        # The section scale factors dictionary is used to store the scale factors for the sections
+        self.section_scale_factors : List[section_scale_factors] = []
 
         # The area section assignment dictionary (key = area section name, value = list of area ids in ETABS)
         self.area_sections_assignment : DefaultDict[str, List[int]] = defaultdict(list)

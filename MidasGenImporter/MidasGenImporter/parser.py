@@ -77,6 +77,7 @@ class parser:
         self._parse_elastic_materials()
         self._parse_frame_sections()
         self._parse_thickness()
+        self._parse_section_scale_factors()
         
         self._parse_area_sections()
         self._parse_area_sections_assignment()
@@ -292,7 +293,7 @@ class parser:
         ; iTHK, TYPE, NAME, bSAME, THIK-IN, THIK-OUT, bOFFSET, OFFTYPE, VALUE ; TYPE=VALUE
         '''
         for item in self.commands['*THICKNESS']:
-            words = _split_line(item)
+            words = _split_line(item, skip_empty=False)
             if len(words) < 3:
                 raise Exception('Invalid thickness line: {}, expecting at least 3 values'.format(item))
             thk_id = int(words[0])
@@ -312,6 +313,34 @@ class parser:
             self.doc.thicknesses[thk_id] = thick
         if self.interface is not None:
             self.interface.send_message(f'Parsed {len(self.doc.thicknesses)} thicknesses', mtype=stko_interface.message_type.INFO)
+
+    # this function parses section scale factors
+    def _parse_section_scale_factors(self):
+        '''
+        *ELEM-SRF    ; Element Stiffness Scale Factor
+        ; ELEM_LIST,  AREA_SF, ASY_SF, ASZ_SF, IXX_SF, IYY_SF, IZZ_SF, WGT_SF, GROUP, iPart
+        '''
+        for item in self.commands['*ELEM-SRF']:
+            words = _split_line(item, skip_empty=False)
+            if len(words) < 9:
+                raise Exception('Invalid section scale factors line: {}, expecting at least 9 values'.format(item))
+            elem_list = _mgt_string_to_id_or_range(words[0])
+            area_sf = float(words[1])
+            asy_sf = float(words[2])
+            asz_sf = float(words[3])
+            ixx_sf = float(words[4])
+            iyy_sf = float(words[5])
+            izz_sf = float(words[6])
+            # not supported ones
+            wgt_sf = float(words[7])  # weight scale factor, not supported
+            if wgt_sf != 1.0 and self.interface is not None:
+                self.interface.send_message(f'[ELEM-SRF]: Weight scale factor {wgt_sf} is not supported, ignoring it', mtype=stko_interface.message_type.ERROR)
+            # create a section scale factor object
+            section_sf = section_scale_factors(area_sf, asy_sf, asz_sf, ixx_sf, iyy_sf, izz_sf, elements=elem_list)
+            self.doc.section_scale_factors.append(section_sf)
+        if self.interface is not None:
+            self.interface.send_message(f'Parsed {len(self.doc.section_scale_factors)} section scale factors', mtype=stko_interface.message_type.INFO)
+
 
 
     # called by the _parse_area_sections function if the MVLEM Notes is used

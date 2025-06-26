@@ -6,10 +6,11 @@
     *MATERIAL    ; Material
     *SECTION    ; Section
     *THICKNESS    ; Thickness
+    *ELEM-SRF    ; Element Stiffness Scale Factor
+    *WALL-SSRF    ; Wall Stiffness Scale Factor
+    *PLATE-SSRF    ; Plate Stiffness Scale Factor
 
-*ELEM-SRF    ; Element Stiffness Scale Factor
-*WALL-SSRF    ; Wall Stiffness Scale Factor
-*PLATE-SSRF    ; Plate Stiffness Scale Factor
+
 *STLDCASE    ; Static Load Cases
 *STORY    ; Story
 *STORY-CHANGED-INFO    ; Story Changed Information
