@@ -81,8 +81,6 @@ class parser:
         self._parse_section_scale_factors()
         self._parse_thickness_scale_factors()
         self._parse_constraints()
-        
-
         self._parse_diaphragms()
         
         self._parse_load_patterns()
@@ -515,7 +513,7 @@ class parser:
             self.interface.send_message(f'Parsed {len(self.doc.diaphragm_released_vertices)} diaphragm released vertices', mtype=stko_interface.message_type.INFO)
     
 
-    
+
     
     # this function parses the load patterns and adds them to the document
     def _parse_load_patterns(self):
