@@ -143,21 +143,6 @@ class thickness_scale_factors:
 
 
 
-# The frame nonlinear hinge class is used to store the properties of a frame nonlinear hinge
-class frame_nonlinear_hinge:
-    def __init__(self, name:str, D:List[float], F:List[float]):
-        self.name = name
-        self.D = D
-        self.F = F
-        N = len(self.D)
-        if N != len(self.F):
-            raise ValueError('D and F must have the same number of values')
-        if N < 2 or N > 7:
-            raise ValueError('D and F must have between 2 and 7 values')
-    def __str__(self):
-        return '{} {} {}'.format(self.name, self.D, self.F)
-    def __repr__(self):
-        return self.__str__()
 
 # a load pattern in etabs (Name,IsAuto,Type,SelfWtMult)
 class load_pattern:
@@ -282,22 +267,7 @@ class document:
 
 
 
-        # The area section assignment dictionary (key = area section name, value = list of area ids in ETABS)
-        self.area_sections_assignment : DefaultDict[str, List[int]] = defaultdict(list)
-        # The inverse of the area section assignment dictionary (key = area id, value = area section name)
-        self.area_sections_assignment_inverse : Dict[int, str] = {}
-        
-        # The frame section assignment dictionary (key = frame section name, value = list of frame ids in ETABS)
-        self.frame_sections_assignment : DefaultDict[str, List[int]] = defaultdict(list)
-        # The inverse of the frame section assignment dictionary (key = frame id, value = frame section name)
-        self.frame_sections_assignment_inverse : Dict[int, str] = {}
-        # The frame nonlinear hinge dictionary is used to store the properties of the frame nonlinear hinges
-        self.frame_nonlinear_hinges : Dict[str, frame_nonlinear_hinge] = {}
-        # TODO: this works only for: 1 hinge per frame, assumed at reldist = 0.5 and converted to BeamWithShearHinge!
-        # The frame nonlinear hinge assignment dictionary (key = frame nonlinear hinge name, value = list of frame ids in ETABS)
-        self.frame_nonlinear_hinges_assignment : DefaultDict[str, List[int]] = defaultdict(list)
-        # The inverse of the frame nonlinear hinge assignment dictionary (key = frame id, value = frame nonlinear hinge name)
-        self.frame_nonlinear_hinges_assignment_inverse : Dict[int, str] = {}
+
         # diaphragm dictionary is used to store the rigid diaphragm members, where the key is the name
         self.diaphragms : Dict[str, List[int]] = {}
         # restraints (key = vertex id, value = list of restraint ids 1 or 0 for 6 DOFs)
