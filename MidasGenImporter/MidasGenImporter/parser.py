@@ -80,11 +80,11 @@ class parser:
         self._parse_thickness()
         self._parse_section_scale_factors()
         self._parse_thickness_scale_factors()
-
+        self._parse_constraints()
         
 
         self._parse_diaphragms()
-        self._parse_restraints()
+        
         self._parse_load_patterns()
         self._parse_joint_loads()
         self._parse_joint_masses()
@@ -455,6 +455,27 @@ class parser:
         if self.interface is not None:
             self.interface.send_message(f'Parsed {len(self.doc.thickness_scale_factors)} thickness scale factors', mtype=stko_interface.message_type.INFO)
 
+    # this function parses the constraints and adds them to the document
+    def _parse_constraints(self):
+        '''
+        *CONSTRAINT    ; Supports
+        ; NODE_LIST, CONST(Dx,Dy,Dz,Rx,Ry,Rz), GROUP
+        Note: CONST(Dx,Dy,Dz,Rx,Ry,Rz) is a string like 111000
+        '''
+        for item in self.commands['*CONSTRAINT']:
+            words = _split_line(item, skip_empty=False)
+            if len(words) < 3:
+                raise Exception('Invalid constraint line: {}, expecting at least 3 values'.format(item))
+            node_list = _mgt_string_to_id_or_range(words[0])
+            const_str = words[1]
+            if len(const_str) != 6:
+                raise Exception('Invalid constraint string: {}, expecting 6 characters'.format(const_str))
+            const = tuple(int(c) for c in const_str)  # convert to tuple of integers (0 or 1)
+            # now, for each node in the node list, add the constraint
+            for node_id in node_list:
+                self.doc.constraints[node_id] = const
+        if self.interface is not None:
+            self.interface.send_message(f'Parsed {len(self.doc.constraints)} constraints', mtype=stko_interface.message_type.INFO)
 
 
 
@@ -468,13 +489,7 @@ class parser:
             items = [int(i.strip()) for i in words[1].replace('"', '').replace('[', '').replace(']', '').replace("'", '').split(',')]
             self.doc.diaphragms[name] = items
 
-    # this function parses the restraints and adds them to the document
-    def _parse_restraints(self):
-        for item in self.commands['* JOINT_RESTRAINTS']:
-            words = item.split(',')
-            id = int(words[0])
-            restraints = tuple([int(words[i]=='Yes') for i in range(1, 7)])
-            self.doc.restraints[id] = restraints
+    
     
     # this function parses the load patterns and adds them to the document
     def _parse_load_patterns(self):

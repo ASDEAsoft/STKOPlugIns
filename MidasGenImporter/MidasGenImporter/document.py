@@ -263,15 +263,15 @@ class document:
         self.section_scale_factors : List[section_scale_factors] = []
         # The thickness scale factors list is used to store the scale factors for the thicknesses
         self.thickness_scale_factors : List[thickness_scale_factors] = []
-
+        # constraints (key = vertex id, value = list of restraint ids 1 or 0 for 6 DOFs)
+        self.constraints : Dict[int, Tuple[int,int,int,int,int,int]] = {}
 
 
 
 
         # diaphragm dictionary is used to store the rigid diaphragm members, where the key is the name
         self.diaphragms : Dict[str, List[int]] = {}
-        # restraints (key = vertex id, value = list of restraint ids 1 or 0 for 6 DOFs)
-        self.restraints : Dict[int, Tuple[int,int,int,int,int,int]] = {}
+        
         # load patterns (key = load pattern name, value = load pattern object)
         self.load_patterns : Dict[str, load_pattern] = {}
         # joint loads (key = vertex id, value = joint load object)
@@ -368,10 +368,10 @@ class document:
         for k,v in self.diaphragms.items():
             self.diaphragms[k] = [old_to_new[n] for n in v]
         # restraints (node id is in the key)
-        _restraints = {i:j for i,j in self.restraints.items()}
-        self.restraints = {}
+        _restraints = {i:j for i,j in self.constraints.items()}
+        self.constraints = {}
         for k,v in _restraints.items():
-            self.restraints[old_to_new[k]] = v
+            self.constraints[old_to_new[k]] = v
         # joint loads (node id is in the key)
         _joint_loads = {i:j for i,j in self.joint_loads.items()}
         self.joint_loads = {}

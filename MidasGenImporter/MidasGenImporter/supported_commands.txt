@@ -12,12 +12,12 @@
     *WALL-SSRF    ; Wall Stiffness Scale Factor
     *PLATE-SSRF    ; Plate Stiffness Scale Factor
 
+    *CONSTRAINT    ; Supports
 
 *STLDCASE    ; Static Load Cases
 *STORY    ; Story
 *STORY-CHANGED-INFO    ; Story Changed Information
 *STORY-ECCEN    ; Story Eccentricity
-*CONSTRAINT    ; Supports
 *RLS-DIAP    ; Diaphragm Disconnect
 *LOADTOMASS    ; Load to Mass
 *EIGEN-CTRL    ; Eigenvalue Analysis Control

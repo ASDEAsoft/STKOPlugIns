@@ -891,7 +891,7 @@ class builder:
         # group restraints by type
         # key = tuple(int * 6), value = list of vertex ids
         restraints : DefaultDict[Tuple[int,int,int,int,int,int], List[int]] = DefaultDict(list)
-        for i, r in self.etabs_doc.restraints.items():
+        for i, r in self.etabs_doc.constraints.items():
             restraints[r].append(i)
         # process each group of restraints
         for rtype, asn_nodes in restraints.items():
@@ -1373,7 +1373,7 @@ rayleigh $CM 0.0 $CK 0.0
             return
         # get all information about the reaction nodes at restraints
         reaction_geom_info : List[_geometry_map_item] = []
-        for i, _ in self.etabs_doc.restraints.items():
+        for i, _ in self.etabs_doc.constraints.items():
             # get the geometry and subshape id
             vertex_data = self._vertex_map.get(i, None)
             if vertex_data is None:
