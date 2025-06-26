@@ -477,17 +477,31 @@ class parser:
         if self.interface is not None:
             self.interface.send_message(f'Parsed {len(self.doc.constraints)} constraints', mtype=stko_interface.message_type.INFO)
 
-
-
     # this function parses the rigid diaphragms and adds them to the document
     def _parse_diaphragms(self):
-        # TODO: add the rigid diaphragm to the document only if it's rigid in ETABS (we need a flag)
-        for item in self.commands['* JOINT_RIGID_DIAPHRAGMS']:
-            words = item.split(',"')
-            name = words[0]
-            # the last one is the retained id
-            items = [int(i.strip()) for i in words[1].replace('"', '').replace('[', '').replace(']', '').replace("'", '').split(',')]
-            self.doc.diaphragms[name] = items
+        '''
+        *STORY    ; Story
+        ;  NAME=NAME, LEVEL, bFLDIAP, WINDWX, WINDWY, WINDCX, WINDCY, ECCX, ECCY, IECCX, IECCY, TAFX, TAFY, WTAFX, WTAFY, AreaPosNum ; line 1
+        we just need, name, level, WTAFX, WTAFY, only if bFLDIAP is YES
+        '''
+        for item in self.commands['*STORY']:
+            words = _split_line(item, skip_empty=False)
+            if len(words) < 15:
+                raise Exception('Invalid story line: {}, expecting at least 15 values'.format(item))
+            name = words[0].split('=')[1]
+            level = float(words[1])
+            bfldiap = words[2] == 'YES'
+            if not bfldiap:
+                # if the diaphragm is not rigid, we skip it
+                continue
+            wtafx = float(words[13])
+            wtafy = float(words[14])
+            # create a diaphragm object
+            diaphragm_obj = diaphragm(name, level, wtafx, wtafy)
+            # add it to the document
+            self.doc.diaphragms[name] = diaphragm_obj
+        if self.interface is not None:
+            self.interface.send_message(f'Parsed {len(self.doc.diaphragms)} diaphragms', mtype=stko_interface.message_type.INFO)
 
     
     

@@ -14,11 +14,12 @@
 
     *CONSTRAINT    ; Supports
 
-*STLDCASE    ; Static Load Cases
-*STORY    ; Story
-*STORY-CHANGED-INFO    ; Story Changed Information
-*STORY-ECCEN    ; Story Eccentricity
+    *STORY    ; Story
+    *STORY-CHANGED-INFO    ; Story Changed Information
+    *STORY-ECCEN    ; Story Eccentricity
 *RLS-DIAP    ; Diaphragm Disconnect
+
+*STLDCASE    ; Static Load Cases
 *LOADTOMASS    ; Load to Mass
 *EIGEN-CTRL    ; Eigenvalue Analysis Control
 

@@ -140,7 +140,17 @@ class thickness_scale_factors:
     def __repr__(self):
         return self.__str__()
 
-
+# The diaphragm class is used to store the properties of a rigid diaphragm
+class diaphragm:
+    def __init__(self, name:str, Z:float, CX:float, CY:float):
+        self.name = name  # name of the diaphragm
+        self.Z = Z  # elevation of the diaphragm
+        self.CX = CX  # center of mass in the x direction
+        self.CY = CY  # center of mass in the y direction
+    def __str__(self):
+        return 'Diaphragm: {}, Z: {}, CX: {}, CY: {}'.format(self.name, self.Z, self.CX, self.CY)
+    def __repr__(self):
+        return self.__str__()
 
 
 
@@ -265,12 +275,8 @@ class document:
         self.thickness_scale_factors : List[thickness_scale_factors] = []
         # constraints (key = vertex id, value = list of restraint ids 1 or 0 for 6 DOFs)
         self.constraints : Dict[int, Tuple[int,int,int,int,int,int]] = {}
-
-
-
-
         # diaphragm dictionary is used to store the rigid diaphragm members, where the key is the name
-        self.diaphragms : Dict[str, List[int]] = {}
+        self.diaphragms : Dict[str, diaphragm] = {}
         
         # load patterns (key = load pattern name, value = load pattern object)
         self.load_patterns : Dict[str, load_pattern] = {}
