@@ -13,15 +13,35 @@ class structure_type:
     def __repr__(self):
         return self.__str__()
 
-# The frame class is used to store the connectivity of a frame member
+# the link_data class is used to store the properties of a link element
+class link_data:
+    def __init__(self, 
+                 id:int,
+                 rigid_flags:Tuple[bool, bool, bool, bool, bool, bool],
+                 stiff:Tuple[float, float, float, float, float, float],
+                 shear:bool, dry:float, drz:float):
+        self.id = id  # ID of the link element in MGT
+        self.rigid_flags = rigid_flags # flags for the 6 DOFs (translation in x, y, z and rotation around x, y, z)
+        self.stiff = stiff  # stiffness in the 6 DOFs (translation in x, y, z and rotation around x, y, z)
+        self.shear = shear  # shear stiffness flag?
+        self.dry = dry  # damping in the y direction?
+        self.drz = drz  # damping in the z direction?
+    def __str__(self):
+        return 'Rigid Flags: {}, Stiffness: {}, Shear: {}, Dry: {}, Drz: {}'.format(
+            self.rigid_flags, self.stiff, self.shear, self.dry, self.drz)
+    def __repr__(self):
+        return self.__str__()
+
+# The frame class is used to store the connectivity of a frame member or for a 2-node elastic link
 class frame:
-    def __init__(self, mat:int, sec:int, nodes:List[int], angle:float=0.0):
+    def __init__(self, mat:int, sec:int, nodes:List[int], angle:float=0.0, link:link_data=None):
         if len(nodes) != 2:
             raise ValueError('Frame must have exactly 2 nodes')
         self.mat = mat
         self.sec = sec
         self.nodes = nodes
         self.angle = angle
+        self.link = link  # link data, if this is a 2-node elastic link
     def __str__(self):
         return '({:8},{:8}), M = {:8}, S = {:8}, A = {:.3f}°'.format(*self.nodes, self.mat, self.sec, self.angle)
     def __repr__(self):

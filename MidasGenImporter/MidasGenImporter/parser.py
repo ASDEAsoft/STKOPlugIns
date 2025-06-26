@@ -73,6 +73,7 @@ class parser:
         self._parse_structure_type()
         self._parse_nodes()
         self._parse_elements()
+        self._parse_elastic_links()
         self._parse_groups()
         self._parse_elastic_materials()
         self._parse_frame_sections()
@@ -169,6 +170,56 @@ class parser:
         print('Parsed {} frames'.format(len(self.doc.frames)))
         print('Parsed {} areas'.format(len(self.doc.areas)))
     
+    # this function parses the elastic links and adds them to the document
+    def _parse_elastic_links(self):
+        '''
+        *ELASTICLINK    ; Elastic Link
+        GEN:
+        ; iNO, iNODE1, iNODE2, LINK, ANGLE, R_SDx, R_SDy, R_SDz, R_SRx, R_SRy, R_SRz, SDx, SDy, SDz, SRx, SRy, SRz, bSHEAR, DRy, DRz, GROUP
+        RIGID:
+        ; iNO, iNODE1, iNODE2, LINK, ANGLE, bSHEAR, DRy, DRz, GROUP
+        '''
+        # get the largest frame ID to assign the elastic links
+        id = max(self.doc.frames.keys(), default=0) + 1  # start from the next ID
+        for item in self.commands['*ELASTICLINK']:
+            words = _split_line(item, skip_empty=False)  # we may have empty strings (for empty group)
+            if len(words) < 5:
+                raise Exception('Invalid elastic link line: {}, expecting at least 5 values'.format(item))
+            link_id = int(words[0])
+            node1 = int(words[1])
+            node2 = int(words[2])
+            link_type = words[3]
+            angle = float(words[4])
+            if link_type == 'GEN':
+                # next 6 are rigid flags
+                rigid_flags = tuple((words[i] == 'YES') for i in range(5, 11))  # R_SDx, R_SDy, R_SDz, R_SRx, R_SRy, R_SRz
+                # next 6 are spring constants
+                spring_constants = tuple(float(words[i]) for i in range(11, 17))  # SDx, SDy, SDz, SRx, SRy, SRz
+                # next 3 are shear constants
+                b_shear = words[17] == 'YES'  # bSHEAR
+                dry = float(words[18])  # DRy
+                drz = float(words[19])  # DRz
+                # create the link_data object
+                link = link_data(link_id, rigid_flags, spring_constants, b_shear, dry, drz)
+            elif link_type == 'RIGID':
+                rigid_flags = (True, True, True, True, True, True)  # all rigid
+                spring_constants = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)  # no springs
+                b_shear = words[5] == 'YES'  # bSHEAR
+                dry = float(words[6])  # DRy
+                drz = float(words[7])  # DRz
+                # create the link_data object
+                link = link_data(link_id, rigid_flags, spring_constants, b_shear, dry, drz)
+            else:
+                raise Exception('Unknown elastic link type: {}'.format(link_type))
+            # create the elastic link object as a frame
+            elastic_link = frame(0, 0, [node1, node2], angle, link=link)
+            # add it to the document
+            self.doc.frames[id] = elastic_link
+            # increment the ID for the next elastic link
+            id += 1
+        if self.interface is not None:
+            self.interface.send_message(f'Parsed {len(self.doc.frames)} elastic links', mtype=stko_interface.message_type.INFO)
+
     # this function parses the groups and adds them to the document
     def _parse_groups(self):
         '''

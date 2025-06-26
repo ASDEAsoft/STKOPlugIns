@@ -1,7 +1,9 @@
+ TODO: default local axes for vertical frame in MGT is z' = X while in STKO y' ? -Y   
     *UNIT    ; Unit System
     *STRUCTYPE    ; Structure Type
     *NODE    ; Nodes
     *ELEMENT    ; Elements
+    *ELASTICLINK    ; Elastic Link
     *GROUP    ; Group
     *MATERIAL    ; Material
     *SECTION    ; Section
@@ -16,7 +18,6 @@
 *STORY-CHANGED-INFO    ; Story Changed Information
 *STORY-ECCEN    ; Story Eccentricity
 *CONSTRAINT    ; Supports
-*ELASTICLINK    ; Elastic Link
 *RLS-DIAP    ; Diaphragm Disconnect
 *LOADTOMASS    ; Load to Mass
 *EIGEN-CTRL    ; Eigenvalue Analysis Control
