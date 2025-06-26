@@ -277,6 +277,8 @@ class document:
         self.constraints : Dict[int, Tuple[int,int,int,int,int,int]] = {}
         # diaphragm dictionary is used to store the rigid diaphragm members, where the key is the name
         self.diaphragms : Dict[str, diaphragm] = {}
+        # vertices not to be used in the diaphragm
+        self.diaphragm_released_vertices : List[int] = []
         
         # load patterns (key = load pattern name, value = load pattern object)
         self.load_patterns : Dict[str, load_pattern] = {}
@@ -370,14 +372,13 @@ class document:
         # areas
         for i,a in self.areas.items():
             a.nodes = [old_to_new[n] for n in a.nodes]
-        # diaphragms
-        for k,v in self.diaphragms.items():
-            self.diaphragms[k] = [old_to_new[n] for n in v]
         # restraints (node id is in the key)
         _restraints = {i:j for i,j in self.constraints.items()}
         self.constraints = {}
         for k,v in _restraints.items():
             self.constraints[old_to_new[k]] = v
+        # diaphragms-released vertices
+        self.diaphragm_released_vertices = [old_to_new[n] for n in self.diaphragm_released_vertices]
         # joint loads (node id is in the key)
         _joint_loads = {i:j for i,j in self.joint_loads.items()}
         self.joint_loads = {}

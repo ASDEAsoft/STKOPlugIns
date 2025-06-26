@@ -17,7 +17,7 @@
     *STORY    ; Story
     *STORY-CHANGED-INFO    ; Story Changed Information
     *STORY-ECCEN    ; Story Eccentricity
-*RLS-DIAP    ; Diaphragm Disconnect
+    *RLS-DIAP    ; Diaphragm Disconnect
 
 *STLDCASE    ; Static Load Cases
 *LOADTOMASS    ; Load to Mass

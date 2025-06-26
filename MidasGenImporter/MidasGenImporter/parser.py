@@ -502,6 +502,18 @@ class parser:
             self.doc.diaphragms[name] = diaphragm_obj
         if self.interface is not None:
             self.interface.send_message(f'Parsed {len(self.doc.diaphragms)} diaphragms', mtype=stko_interface.message_type.INFO)
+        '''
+        *RLS-DIAP    ; Diaphragm Disconnect
+        ; NODE_LIST
+        '''
+        # this command is used to define the vertices that are not part of the diaphragm
+        for item in self.commands['*RLS-DIAP']:
+            # there is only one line with the node list
+            nodes = _mgt_string_to_id_or_range(item)
+            self.doc.diaphragm_released_vertices.extend(nodes)
+        if self.interface is not None:
+            self.interface.send_message(f'Parsed {len(self.doc.diaphragm_released_vertices)} diaphragm released vertices', mtype=stko_interface.message_type.INFO)
+    
 
     
     
