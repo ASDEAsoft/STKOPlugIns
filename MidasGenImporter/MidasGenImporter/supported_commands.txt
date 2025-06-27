@@ -21,7 +21,7 @@
 
     *STLDCASE    ; Static Load Cases
 *LOADTOMASS    ; Load to Mass
-*EIGEN-CTRL    ; Eigenvalue Analysis Control
+
 
     *USE-STLD, xxx
     *SELFWEIGHT    ; Self Weight
@@ -34,11 +34,3 @@
 *LOADCOMB    ; Combinations
 
 
-*SFUNCTION    ; Spectrum Function
-*SPLDCASE    ; Spectrum Load Cases
-*MEMBER    ; Member
-*ORTHOEFF-LC    ; Load cases for Orthogonal Effect
-*BLDG-CTRL    ; Building Control Data
-*LC-COLOR    ; Diagram Color for Load Case
-*DGN-MATL    ; Modify Steel(Concrete) Material
-*ENDDATA
