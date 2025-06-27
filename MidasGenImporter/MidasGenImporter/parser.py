@@ -112,7 +112,7 @@ class parser:
         self._parse_self_weight()
         self._parse_nodal_loads()
         self._parse_beam_loads()
-        
+        self._parse_pressure_loads()
 
         self._parse_load_patterns()
         self._parse_joint_loads()
@@ -697,6 +697,85 @@ class parser:
                 if len(lc.beam_loads) > 0:
                     self.interface.send_message(f'Parsed {len(lc.beam_loads)} beam loads for load case {lc_name}', mtype=stko_interface.message_type.INFO)
 
+    # this function parses the pressure loads and adds them to the document
+    def _parse_pressure_loads(self):
+        '''
+        *PRESSURE, LCASE_NAME    ; Pressure Loads
+        ; ELEM_LIST, CMD, ETYP, LTYP, DIR, VX, VY, VZ, bPROJ, PU, P1, P2, P3, P4, GROUP,PSLTKEY  ; ETYP=PLATE, LTYP=FACE
+        Notes:
+        - CMD must be PRES
+        - ETYP must be PLATE
+        - LTYP must be FACE
+        - VX, VY, VZ must be 0
+        - bPROJ must be NO
+        - PU is the pressure value
+        - P1, P2, P3, P4 must be 0.0
+        '''
+        for item, values in self.commands.items():
+            if not '*PRESSURE' in item:
+                continue
+            # get the load case from the command name
+            command_words = _split_line(item)
+            if len(command_words) < 2:
+                raise Exception('Invalid pressure load command: {}, expecting at least 2 words'.format(item))
+            lc_name = command_words[1]
+            lc = self.doc.load_cases.get(lc_name, None)
+            if lc is None:
+                raise Exception('Load case {} not found for pressure loads'.format(lc_name))
+            # parse the values
+            for value in values:
+                words = _split_line(value, skip_empty=False)
+                if len(words) < 14:
+                    raise Exception('Invalid pressure load line: {}, expecting at least 14 values'.format(value))
+                elem_list = _mgt_string_to_id_or_range(words[0])
+                cmd = words[1]
+                if cmd != 'PRES':
+                    raise Exception('Invalid pressure load command: {}, expecting PRES'.format(cmd))
+                etyp = words[2]
+                if etyp != 'PLATE':
+                    raise Exception('Invalid pressure load element type: {}, expecting PLATE'.format(etyp))
+                ltyp = words[3]
+                if ltyp != 'FACE':
+                    raise Exception('Invalid pressure load load type: {}, expecting FACE'.format(ltyp))
+                direction = words[4]
+                if len(direction) != 2:
+                    raise Exception('Invalid pressure load direction: {}, expecting 2 characters'.format(direction))
+                is_local = direction[0] == 'L'
+                component = _globals._xyz_to_index.get(direction[1], None)
+                if component is None:
+                    raise Exception('Invalid pressure load direction component: {}, expecting X, Y or Z'.format(direction[1]))
+                vx = float(words[5])
+                vy = float(words[6])
+                vz = float(words[7])
+                if vx != 0.0 or vy != 0.0 or vz != 0.0:
+                    raise Exception('Invalid VX, VY, VZ components: {}, expecting (0.0, 0.0, 0.0)'.format((vx, vy, vz)))
+                proj = words[8]
+                if proj != 'NO':
+                    raise Exception('Pressure loads with projection are not supported, found: {}'.format(proj))
+                pu = float(words[9])
+                p1 = float(words[10])
+                p2 = float(words[11])
+                p3 = float(words[12])
+                p4 = float(words[13])
+                if p1 != 0.0 or p2 != 0.0 or p3 != 0.0 or p4 != 0.0:
+                    raise Exception('Invalid P1, P2, P3, P4 values: {}, expecting (0.0, 0.0, 0.0, 0.0)'.format((p1, p2, p3, p4)))
+                if pu == 0.0:
+                    continue  # no pressure load
+                # make the load vector
+                load_vector = (
+                    pu if is_local and component == 0 else 0.0,  # X component
+                    pu if is_local and component == 1 else 0.0,  # Y component
+                    pu if is_local and component == 2 else 0.0,  # Z component
+                )
+                # create the pressure load object
+                pressure_load_obj = pressure_load(load_vector, is_local)
+                # add the pressure load to the document
+                lc.pressure_loads[pressure_load_obj].extend(elem_list)
+        if self.interface is not None:
+            for lc_name, lc in self.doc.load_cases.items():
+                num_pressure_loads = len(lc.pressure_loads)
+                if num_pressure_loads > 0:
+                    self.interface.send_message(f'Load case {lc_name} has {num_pressure_loads} pressure loads', mtype=stko_interface.message_type.INFO)
 
 
 

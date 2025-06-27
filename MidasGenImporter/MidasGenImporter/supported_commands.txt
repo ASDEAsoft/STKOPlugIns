@@ -27,7 +27,7 @@
     *SELFWEIGHT    ; Self Weight
     *CONLOAD    ; Nodal Loads
     *BEAMLOAD    ; Element Beam Loads
-*PRESSURE    ; Pressure Loads
+    *PRESSURE    ; Pressure Loads
 *FLOADTYPE    ; Define Floor Load Type
 *FLOORLOAD    ; Floor Loads
 

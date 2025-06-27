@@ -197,6 +197,24 @@ class beam_load:
             return NotImplemented
         return self.value == other.value and self.local == other.local
 
+# pressure load
+# where value is a tuple of 3 floats (Fx, Fy, Fz)
+# local is a boolean that indicates if the load is in the local coordinate system of the element
+class pressure_load:
+    def __init__(self, value:Tuple[float, float, float], local:bool):
+        self.value = value  # value is a tuple of 3 floats (Fx, Fy, Fz)
+        self.local = local  # if True, the load is in the local coordinate system of
+    def __str__(self):
+        return 'Pressure Load: {}, Local: {}'.format(self.value, self.local)
+    def __repr__(self):
+        return self.__str__()
+    def __hash__(self):
+        return hash((self.value, self.local))
+    def __eq__(self, other):
+        if not isinstance(other, pressure_load):
+            return NotImplemented
+        return self.value == other.value and self.local == other.local
+
 # The load case class is used to store the properties of a load case
 class load_case:
     def __init__(self, name:str):
@@ -204,9 +222,10 @@ class load_case:
         self.self_weight:self_weight_load = None  # self weight
         self.nodal_loads:DefaultDict[nodal_load, List[int]] = defaultdict(list)  # dictionary of nodal loads (key: nodal load, value: list of node IDs)
         self.beam_loads:DefaultDict[beam_load, List[int]] = defaultdict(list)  # dictionary of beam loads (key: beam load, value: list of element IDs)
+        self.pressure_loads:DefaultDict[pressure_load, List[int]] = defaultdict(list)  # dictionary of pressure loads (key: pressure load, value: list of element IDs)
     def __str__(self):
-        return 'Load Case: {}, Self Weight: {}, Nodal Loads: {}'.format(
-            self.name, (self.self_weight is not None), len(self.nodal_loads))
+        return 'Load Case: {}, Self Weight: {}, Nodal Loads: {}, Beam Loads: {}, Pressure Loads: {}'.format(
+            self.name, self.self_weight, self.nodal_loads, self.beam_loads, self.pressure_loads)
     def __repr__(self):
         return self.__str__()
 
