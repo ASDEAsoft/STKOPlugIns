@@ -195,6 +195,7 @@ class parser:
         self._parse_beam_loads()
         self._parse_pressure_loads()
         self._parse_floor_loads()
+        self._check_load_cases()
 
         self._parse_load_patterns()
         self._parse_joint_loads()
@@ -980,9 +981,8 @@ class parser:
                     # create a nodal load object
                     load_value = (edge_nodal_load if component == 0 else 0.0,
                                   edge_nodal_load if component == 1 else 0.0,
-                                  edge_nodal_load if component == 2 else 0.0,
-                                  0.0, 0.0, 0.0) # no moments
-                    nodal_load_obj = nodal_load(load_value)
+                                  edge_nodal_load if component == 2 else 0.0)
+                    nodal_load_obj = floor_nodal_load(load_value)
                     # add it to the load case
                     lc.floor_loads[nodal_load_obj].append(node_id)
         if self.interface is not None:
@@ -991,7 +991,17 @@ class parser:
                 num_eq_nodal_loads = sum(len(nodes) for _, nodes in lc.floor_loads.items())
                 self.interface.send_message(f'Load case {lc_name} has {num_eq_nodal_loads} equivalent nodal loads from floor loads', mtype=stko_interface.message_type.INFO)
             
-            
+    # this function checks if the load cases are valid
+    def _check_load_cases(self):
+        for lc_name, lc in self.doc.load_cases.items():
+            if self.interface is not None:
+                self.interface.send_message(f'Checking load case {lc_name}', mtype=stko_interface.message_type.INFO)
+            lc.check()
+
+
+
+
+
 
     # this function parses the load patterns and adds them to the document
     def _parse_load_patterns(self):

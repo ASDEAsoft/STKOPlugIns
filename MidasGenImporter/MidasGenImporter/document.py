@@ -178,6 +178,9 @@ class nodal_load:
         if not isinstance(other, nodal_load):
             return NotImplemented
         return self.value == other.value
+    def copy(self, scale_factor:float, add_factor:float):
+        new_value = tuple(v * scale_factor + add_factor for v in self.value)
+        return nodal_load(new_value)
 
 # beam load
 # where value is a tuple of 3 floats (Fx, Fy, Fz)
@@ -196,6 +199,9 @@ class beam_load:
         if not isinstance(other, beam_load):
             return NotImplemented
         return self.value == other.value and self.local == other.local
+    def copy(self, scale_factor:float, add_factor:float):
+        new_value = tuple(v * scale_factor + add_factor for v in self.value)
+        return beam_load(new_value, self.local)
 
 # pressure load
 # where value is a tuple of 3 floats (Fx, Fy, Fz)
@@ -214,8 +220,28 @@ class pressure_load:
         if not isinstance(other, pressure_load):
             return NotImplemented
         return self.value == other.value and self.local == other.local
+    def copy(self, scale_factor:float, add_factor:float):
+        new_value = tuple(v * scale_factor + add_factor for v in self.value)
+        return pressure_load(new_value, self.local)
 
-
+# floor load (actually equivalent nodal load)
+# where value is a tuple of 6 floats (Fx,Fy,Fz)
+class floor_nodal_load:
+    def __init__(self, value:Tuple[float,float,float]):
+        self.value = value
+    def __str__(self):
+        return 'Floor Nodal Load: {}'.format(self.value)
+    def __repr__(self):
+        return self.__str__()
+    def __hash__(self):
+        return hash(self.value)
+    def __eq__(self, other):
+        if not isinstance(other, floor_nodal_load):
+            return NotImplemented
+        return self.value == other.value
+    def copy(self, scale_factor:float, add_factor:float):
+        new_value = tuple(v * scale_factor + add_factor for v in self.value)
+        return floor_nodal_load(new_value)
 
 # The load case class is used to store the properties of a load case
 class load_case:
@@ -225,12 +251,59 @@ class load_case:
         self.nodal_loads:DefaultDict[nodal_load, List[int]] = defaultdict(list)  # dictionary of nodal loads (key: nodal load, value: list of node IDs)
         self.beam_loads:DefaultDict[beam_load, List[int]] = defaultdict(list)  # dictionary of beam loads (key: beam load, value: list of element IDs)
         self.pressure_loads:DefaultDict[pressure_load, List[int]] = defaultdict(list)  # dictionary of pressure loads (key: pressure load, value: list of element IDs)
-        self.floor_loads:DefaultDict[nodal_load, List[int]] = defaultdict(list)  # dictionary of equivalent nodal loads (key: nodal load, value: list of node IDs)
+        self.floor_loads:DefaultDict[floor_nodal_load, List[int]] = defaultdict(list)  # dictionary of equivalent nodal loads (key: nodal load, value: list of node IDs)
     def __str__(self):
         return 'Load Case: {}, Self Weight: {}, Nodal Loads: {}, Beam Loads: {}, Pressure Loads: {}'.format(
             self.name, self.self_weight, self.nodal_loads, self.beam_loads, self.pressure_loads)
     def __repr__(self):
         return self.__str__()
+    def check(self):
+        # define a helper function to make a counter from a list
+        def _make_counter(source:List[int]) -> DefaultDict[int, int]:
+            counter = defaultdict(int)
+            for item in source:
+                counter[item] += 1
+            return counter
+        # process nodal loads
+        for source_dict, label in zip((self.nodal_loads, self.beam_loads, self.pressure_loads, self.floor_loads), 
+                                      ('Nodal Loads', 'Beam Loads', 'Pressure Loads', 'Floor Loads')):
+            merged_dict:DefaultDict[nodal_load, List[int]] = defaultdict(list)
+            for key, targets in source_dict.items():
+                # check if the nodes are unique
+                counter = _make_counter(targets)
+                if len(counter) == len(targets): continue
+                # compute a tolerance for the add_factor
+                tol = 1e-6 * max(abs(v) for v in key.value)
+                for i_target, count in counter.items():
+                    if count > 1:
+                        # remove this target from the source targets
+                        targets.remove(i_target)
+                        # compute a new key for this target scaling it by the count
+                        # note that if another key may have the same value as the scaled one!
+                        # so we iteratively add an add_factor to the key until it is unique
+                        add_factor = 0.0
+                        merged_key = None
+                        for iter in range(100):
+                            merged_key = key.copy(count, add_factor)
+                            if merged_key not in merged_dict and merged_key not in source_dict:
+                                # add the target to the merged nodal loads
+                                merged_dict[merged_key].append(i_target)
+                                break
+                            add_factor += tol
+                        if merged_key is None:
+                            raise ValueError('Could not merge for key {} and target {} after 100 iterations'.format(key, i_target))
+            # add the merged dict to the source dict
+            for key, targets in merged_dict.items():
+                if key in source_dict:
+                    # this should never happen, but if it does, raise an error
+                    raise ValueError('Key {} already exists in the source dictionary'.format(key))
+                source_dict[key] = targets
+            if len(merged_dict) > 0:
+                print('   Handled {} duplicated targets in {}'.format(len(merged_dict), label))
+
+
+
+
 
 
 
