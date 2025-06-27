@@ -215,6 +215,8 @@ class pressure_load:
             return NotImplemented
         return self.value == other.value and self.local == other.local
 
+
+
 # The load case class is used to store the properties of a load case
 class load_case:
     def __init__(self, name:str):
@@ -223,6 +225,7 @@ class load_case:
         self.nodal_loads:DefaultDict[nodal_load, List[int]] = defaultdict(list)  # dictionary of nodal loads (key: nodal load, value: list of node IDs)
         self.beam_loads:DefaultDict[beam_load, List[int]] = defaultdict(list)  # dictionary of beam loads (key: beam load, value: list of element IDs)
         self.pressure_loads:DefaultDict[pressure_load, List[int]] = defaultdict(list)  # dictionary of pressure loads (key: pressure load, value: list of element IDs)
+        self.floor_loads:DefaultDict[nodal_load, List[int]] = defaultdict(list)  # dictionary of equivalent nodal loads (key: nodal load, value: list of node IDs)
     def __str__(self):
         return 'Load Case: {}, Self Weight: {}, Nodal Loads: {}, Beam Loads: {}, Pressure Loads: {}'.format(
             self.name, self.self_weight, self.nodal_loads, self.beam_loads, self.pressure_loads)

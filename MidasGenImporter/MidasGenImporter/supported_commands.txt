@@ -28,8 +28,8 @@
     *CONLOAD    ; Nodal Loads
     *BEAMLOAD    ; Element Beam Loads
     *PRESSURE    ; Pressure Loads
-*FLOADTYPE    ; Define Floor Load Type
-*FLOORLOAD    ; Floor Loads
+    *FLOADTYPE    ; Define Floor Load Type
+    *FLOORLOAD    ; Floor Loads
 
 *LOADCOMB    ; Combinations
 

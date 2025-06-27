@@ -8,6 +8,16 @@ import math
 from PyMpc import *
 
 def _split_line(contents:str, skip_empty:bool=True) -> List[str]:
+    """
+    Splits a comma-separated string into a list of stripped substrings.
+
+    Args:
+        contents (str): The input string to split by commas.
+        skip_empty (bool, optional): If True, empty substrings are omitted from the result. Defaults to True.
+
+    Returns:
+        List[str]: A list of non-empty (if skip_empty is True) or all (if skip_empty is False) stripped substrings.
+    """
     return [pline for pline in (line.strip() for line in contents.split(',')) if (pline or not skip_empty)]
 
 def _mgt_string_to_id_or_range(s: str) -> List[int]:
@@ -43,6 +53,77 @@ class _globals:
         'Y': 1,
         'Z': 2,
     }
+
+class _floor_polygon:
+    class _edge:
+        """
+        A class to represent an edge of a polygon.
+        It is used to store the start and end vertices of the edge,
+        and compute the length of the edge.
+        """
+        def __init__(self, v1:int, v2:int, length:float, ratio:float):
+            self.v1 = v1
+            self.v2 = v2
+            self.length = length
+            self.ratio = ratio
+    """
+    A class to represent a polygon for floor loads.
+    It is used to store the vertices of the polygon, assumed to be in the XY plane and
+    ordered in a counter-clockwise manner.
+    The vertices are stored as a list of tuples (ID, x, y).
+    This class computes:
+    - the total area of the polygon using the shoelace formula.
+    - the total perimeter of the polygon.
+    - the list of edges as a list of tuples of indices of the vertices.
+    - for each edge, it computes the length and it's ratio to the total perimeter (this will be used to distribute the load along the edges).
+    """
+    def __init__(self, vertices:List[Tuple[int, float, float]]):
+        """
+        Initializes the polygon with the given vertices.
+        The vertices are assumed to be in the XY plane and ordered in a counter-clockwise manner.
+        """
+        self.vertices:List[Tuple[int, float, float]] = vertices
+        self.edges:List[_floor_polygon._edge] = []
+        self.area = 0.0
+        self.perimeter = 0.0
+        self._compute_polygon_properties()
+    def _compute_polygon_properties(self):
+        """
+        Computes the area, perimeter and edges of the polygon.
+        The area is computed using the shoelace formula.
+        The perimeter is computed as the sum of the lengths of the edges.
+        The edges are stored as a list of tuples (v1, v2) where v1 and v2 are the indices of the vertices.
+        For each edge, it computes the length and its ratio to the total perimeter.
+        """
+        n = len(self.vertices)
+        if n < 3:
+            raise Exception('A polygon must have at least 3 vertices')
+        # compute area using the shoelace formula
+        self.area = 0.0
+        for i in range(n):
+            id1, x1, y1 = self.vertices[i]
+            id2, x2, y2 = self.vertices[(i + 1) % n]
+            self.area += x1 * y2 - x2 * y1
+        self.area = abs(self.area) / 2.0
+        # compute total perimeter and edge structure
+        self.perimeter = 0.0
+        for i in range(n):
+            v1 = i
+            v2 = (i + 1) % n
+            id1, x1, y1 = self.vertices[v1]
+            id2, x2, y2 = self.vertices[v2]
+            length = math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+            self.edges.append(_floor_polygon._edge(v1, v2, length, 0.0))
+            self.perimeter += length
+        # compute the ratio of each edge length to the total perimeter
+        for edge in self.edges:
+            edge.ratio = edge.length / self.perimeter if self.perimeter > 0 else 0.0
+    def __str__(self):
+        # let's print the edges' ratios
+        edges_str = ', '.join(f'({self.vertices[edge.v1][0]}, {self.vertices[edge.v2][0]}): {edge.ratio:.4f}' for edge in self.edges)
+        return f'Polygon with {len(self.vertices)} vertices, Area: {self.area:.3g}, Perimeter: {self.perimeter:.3g}, Edges: [{edges_str}]'
+    def __repr__(self):
+        return self.__str__()
 
 # The parser class is used to parse the ETABS text file and build the document
 class parser:
@@ -113,6 +194,7 @@ class parser:
         self._parse_nodal_loads()
         self._parse_beam_loads()
         self._parse_pressure_loads()
+        self._parse_floor_loads()
 
         self._parse_load_patterns()
         self._parse_joint_loads()
@@ -777,7 +859,139 @@ class parser:
                 if num_pressure_loads > 0:
                     self.interface.send_message(f'Load case {lc_name} has {num_pressure_loads} pressure loads', mtype=stko_interface.message_type.INFO)
 
-
+    # this function parses the floor loads and adds them to the document as equivalent loads
+    def _parse_floor_loads(self):
+        # Step 1: parse the floor load type.
+        # build a dictionary of floor load types
+        # with: key = floor load type name, value = List[load_case_name:str, load_value:float]
+        '''
+        *FLOADTYPE    ; Define Floor Load Type
+        ; NAME, DESC                                             ; 1st line
+        ; LCNAME1, FLOAD1, bSBU1, ..., LCNAME_N, FLOAD_N, bSBU_N  ; 2nd line
+        '''
+        floor_load_types : Dict[str, List[Tuple[str, float]]] = {}
+        lines = self.commands['*FLOADTYPE']
+        if len(lines) % 2 != 0:
+            raise Exception('Invalid floor load type command, expecting an even number of lines')
+        for i in range(0, len(lines), 2):
+            line_1 = _split_line(lines[i], skip_empty=False)
+            if len(line_1) < 2:
+                raise Exception('Invalid floor load type command, expecting at least 2 words in the first line')
+            key = line_1[0]
+            line_2 = _split_line(lines[i + 1], skip_empty=False)
+            # multiple of 3
+            if len(line_2) % 3 != 0:
+                raise Exception('Invalid floor load type command, expecting a multiple of 3 words in the second line')
+            # parse the second line
+            value = []
+            for j in range(0, len(line_2) - 1, 3):
+                lc_name = line_2[j]
+                fload = float(line_2[j + 1])
+                value.append((lc_name, fload))
+            floor_load_types[key] = value
+        if self.interface is not None:
+            self.interface.send_message(f'Parsed {len(floor_load_types)} floor load types', mtype=stko_interface.message_type.INFO)
+        # Step 2: parse the floor loads and add them to the document
+        '''
+        *FLOORLOAD    ; Floor Loads
+        ; LTNAME, iDIST, ANGLE, iSBEAM, SBANG, SBUW, DIR, bPROJ, DESC, bEX, bAL, GROUP, NODE1, ..., NODEn
+        ; Note: we only suppport iDIST 2=Two Way
+        '''
+        for item in self.commands['*FLOORLOAD']:
+            words = _split_line(item, skip_empty=False)
+            if len(words) < 15:
+                raise Exception('Invalid floor load command, expecting at least 15 words')
+            lt_name = words[0]  # floor load type name
+            idist = int(words[1])  # distance type, we only support 2=Two Way
+            if idist != 2:
+                raise Exception(f'Invalid distance type {idist}, only 2=Two Way is supported')
+            # ANGLE, iSBEAM, SBANG, SBUW must be zero
+            angle = float(words[2])
+            isbeam = int(words[3])
+            sbang = float(words[4])
+            sbuw = float(words[5])
+            if angle != 0.0 or isbeam != 0 or sbang != 0.0 or sbuw != 0.0:
+                raise Exception(f'Invalid floor load command, expecting angle, isbeam, sbang and sbuw to be zero, got {angle}, {isbeam}, {sbang}, {sbuw}')
+            direction = words[6] 
+            if len(direction) != 2:
+                raise Exception(f'Invalid floor load command, expecting direction to be a 2-character string, got {direction}')
+            is_local = direction[0] == 'L'
+            if is_local:
+                raise Exception('Local direction is not supported for floor loads')
+            component = _globals._xyz_to_index.get(direction[1], None)
+            if component is None:
+                raise Exception('Invalid floor load direction component: {}, expecting X, Y or Z'.format(direction[1]))
+            bproj = words[7]
+            if bproj != 'NO':
+                raise Exception('Invalid floor load command, expecting bproj to be NO, got {}'.format(bproj))
+            # skip DESC, bEX, bAL, GROUP
+            # get all nodes (comma separated)
+            node_ids = [int(i) for i in words[12:] if i.isdigit()]
+            # collect list of tuples(id,x,y) for the polygon vertices
+            # and check they are all at the same Z coordinate within a tolerance
+            points: List[Tuple[int, float, float]] = []
+            z_coord = None
+            z_error = 0.0
+            bbox = FxBndBox()
+            for node_id in node_ids:
+                vertex = self.doc.vertices.get(node_id, None)
+                if vertex is None:
+                    raise Exception(f'Node {node_id} not found in the document')
+                bbox.add(vertex)
+                # check if the node is at the same Z coordinate
+                if z_coord is None:
+                    z_coord = vertex.z
+                z_error = max(z_error, abs(vertex.z - z_coord))
+                points.append((node_id, vertex.x, vertex.y))
+            bbox_diag = bbox.maxPoint - bbox.minPoint
+            bbox_diag_avg = (bbox_diag.x + bbox_diag.y + bbox_diag.z) / 3.0
+            tolerance = 1.0e-12*bbox_diag_avg
+            if z_error > tolerance:
+                raise Exception(f'Nodes {node_ids} are not at the same Z coordinate, max error = {z_error}, tolerance = {tolerance}')
+            # now we can create the polygon
+            polygon = _floor_polygon(points)
+            # now, we can create the equivalent beam loads
+            # for each edge of the polygon
+            # and for each item in the associated floor load type
+            lt_obj = floor_load_types.get(lt_name, None)
+            if lt_obj is None:
+                raise Exception(f'Floor load type {lt_name} not found in the document')
+            for lc_name, area_load in lt_obj:
+                # get the load case from the document
+                lc = self.doc.load_cases.get(lc_name, None)
+                if lc is None:
+                    raise Exception(f'Load case {lc_name} not found in the document')
+                # from area load (F/A) to concentrated load on the whole floor (F)
+                total_load = area_load * polygon.area
+                # now we have to 1) compute the distributed load (F/L) for each edge
+                # and 2) lump it to the 2 end-nodes of the edge
+                # so we can create equivalent nodal loads
+                eq_nodal_loads = defaultdict(float)
+                for edge in polygon.edges:
+                    # get the portion of the total load to apply on the 2 nodes this edge (F)
+                    edge_nodal_load = total_load * edge.ratio / 2.0
+                    # accumulate the load on the 2 end-nodes of the edge
+                    N1 = polygon.vertices[edge.v1][0]
+                    N2 = polygon.vertices[edge.v2][0]
+                    eq_nodal_loads[N1] += edge_nodal_load
+                    eq_nodal_loads[N2] += edge_nodal_load
+                # now we can create the equivalent nodal loads
+                for node_id, edge_nodal_load in eq_nodal_loads.items():
+                    # create a nodal load object
+                    load_value = (edge_nodal_load if component == 0 else 0.0,
+                                  edge_nodal_load if component == 1 else 0.0,
+                                  edge_nodal_load if component == 2 else 0.0,
+                                  0.0, 0.0, 0.0) # no moments
+                    nodal_load_obj = nodal_load(load_value)
+                    # add it to the load case
+                    lc.floor_loads[nodal_load_obj].append(node_id)
+        if self.interface is not None:
+            for lc_name, lc in self.doc.load_cases.items():
+                # send a message with the number of equivalent nodal loads
+                num_eq_nodal_loads = sum(len(nodes) for _, nodes in lc.floor_loads.items())
+                self.interface.send_message(f'Load case {lc_name} has {num_eq_nodal_loads} equivalent nodal loads from floor loads', mtype=stko_interface.message_type.INFO)
+            
+            
 
     # this function parses the load patterns and adds them to the document
     def _parse_load_patterns(self):
