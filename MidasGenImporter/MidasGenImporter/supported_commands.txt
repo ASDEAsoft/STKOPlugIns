@@ -23,8 +23,8 @@
 *LOADTOMASS    ; Load to Mass
 *EIGEN-CTRL    ; Eigenvalue Analysis Control
 
-*USE-STLD, xxx
-*SELFWEIGHT    ; Self Weight
+    *USE-STLD, xxx
+    *SELFWEIGHT    ; Self Weight
 *CONLOAD    ; Nodal Loads
 *BEAMLOAD    ; Element Beam Loads
 *PRESSURE    ; Pressure Loads

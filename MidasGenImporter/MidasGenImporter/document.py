@@ -152,14 +152,27 @@ class diaphragm:
     def __repr__(self):
         return self.__str__()
 
+# The self_weight_load class is used to store the self weight load direction
+# direction is a tuple of 3 floats (Dx, Dy, Dz), that will be multiplied by the gravity and mass
+# to obtain the self weight load in the x, y, and z directions
+class self_weight_load:
+    def __init__(self, direction:Tuple[float, float, float]):
+        self.direction = direction
+    def __str__(self):
+        return 'Self Weight Load: {}'.format(self.direction)
+    def __repr__(self):
+        return self.__str__()
+
 # The load case class is used to store the properties of a load case
 class load_case:
     def __init__(self, name:str):
         self.name = name
+        self.self_weight:self_weight_load = None  # self weight
     def __str__(self):
         return 'Load Case: {}'.format(self.name)
     def __repr__(self):
         return self.__str__()
+
 
 
 

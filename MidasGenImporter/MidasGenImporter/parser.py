@@ -36,6 +36,9 @@ def _mgt_string_to_id_or_range(s: str) -> List[int]:
             result.append(int(part))
     return result
 
+class _globals:
+    _load_commands = ('*SELFWEIGHT', '*CONLOAD', '*BEAMLOAD', '*PRESSURE')
+
 # The parser class is used to parse the ETABS text file and build the document
 class parser:
     
@@ -48,10 +51,14 @@ class parser:
         self.doc = document(name = fname_only)
         # save the interface
         self.interface = interface
-        # initialize command map
+        # initialize command dictionary
+        # this will hold, for each command, a list of lines that belong to that command.
         self.commands = defaultdict(list)
-        # build command map
-        # TODO: handle mult-line commands
+        # the current load case, used to group commands
+        # that belong to the same load case
+        # this is used for *USE-STLD, <name of the load case>
+        current_load_case = None
+        # build command dictionary
         with open(fname, 'r') as ifile:
             # first handle the multi-line commands (\ at the end of the line)
             # read all, replace \\n with \n, then split by \n)
@@ -60,7 +67,21 @@ class parser:
             value = None
             for line in lines:
                 if line.startswith('*'):
-                    the_command = line.split(';')[0].strip()  # remove comments
+                    # remove comments
+                    the_command = line.split(';')[0].strip()
+                    # handle the special case of *USE-STLD, <name of the load case>
+                    if the_command.startswith('*USE-STLD'):
+                        # get the load case name
+                        words = _split_line(the_command)
+                        if len(words) != 2:
+                            raise Exception('Invalid *USE-STLD line: {}, expecting 2 values'.format(the_command))
+                        current_load_case = words[1]
+                        continue
+                    # if we have a current load case, and the command is one of the load commands,
+                    # we append the load case name to the command
+                    if current_load_case is not None and the_command in _globals._load_commands:
+                        the_command += f', {current_load_case}'
+                    # get (or create) the command list
                     value = self.commands[the_command]
                 else:
                     if value is not None:
@@ -83,6 +104,7 @@ class parser:
         self._parse_constraints()
         self._parse_diaphragms()
         self._parse_load_cases()
+        self._parse_self_weight()
         
 
         self._parse_load_patterns()
@@ -534,8 +556,44 @@ class parser:
         if self.interface is not None:
             self.interface.send_message(f'Parsed {len(self.doc.load_cases)} load cases', mtype=stko_interface.message_type.INFO)
 
+    # this function parses the self weight load and adds it to the document
+    def _parse_self_weight(self):
+        '''
+        *SELFWEIGHT, LCASE_NAME    ; Self Weight
+        ; X, Y, Z, GROUP
+        '''
+        for item, values in self.commands.items():
+            if not '*SELFWEIGHT' in item:
+                continue
+            # get the load case from the command name
+            command_words = _split_line(item)
+            if len(command_words) < 2:
+                raise Exception('Invalid self weight command: {}, expecting at least 2 values'.format(item))
+            lc_name = command_words[1]
+            lc = self.doc.load_cases.get(lc_name, None)
+            if lc is None:
+                raise Exception('Load case {} not found for self weight'.format(lc_name))
+            # make sure only one line for the self weight is present
+            if len(values) > 1:
+                raise Exception('Multiple self weight lines found for load case {}: {}'.format(lc_name, values))
+            # parse the values
+            words = _split_line(values[0])
+            if len(words) < 3:
+                raise Exception('Invalid self weight line: {}, expecting at least 3 values'.format(values[0]))
+            # get the self weight direction
+            dx = float(words[0])
+            dy = float(words[1])
+            dz = float(words[2])
+            # create the self weight load object
+            lc.self_weight = self_weight_load((dx, dy, dz))
+        if self.interface is not None:
+            for _, lc in  self.doc.load_cases.items():
+                if lc.self_weight is not None:
+                    self.interface.send_message(f'Parsed self weight for load case {lc.name}: {lc.self_weight.direction}', mtype=stko_interface.message_type.INFO)
 
-    
+
+
+
     # this function parses the load patterns and adds them to the document
     def _parse_load_patterns(self):
         for item in self.commands['* LOAD_PATTERNS']:
