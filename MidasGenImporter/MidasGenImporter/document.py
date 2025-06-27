@@ -152,6 +152,16 @@ class diaphragm:
     def __repr__(self):
         return self.__str__()
 
+# The load case class is used to store the properties of a load case
+class load_case:
+    def __init__(self, name:str):
+        self.name = name
+    def __str__(self):
+        return 'Load Case: {}'.format(self.name)
+    def __repr__(self):
+        return self.__str__()
+
+
 
 
 # a load pattern in etabs (Name,IsAuto,Type,SelfWtMult)
@@ -279,6 +289,9 @@ class document:
         self.diaphragms : Dict[str, diaphragm] = {}
         # vertices not to be used in the diaphragm
         self.diaphragm_released_vertices : List[int] = []
+        # load cases
+        self.load_cases : Dict[str, load_case] = {}
+
         
         # load patterns (key = load pattern name, value = load pattern object)
         self.load_patterns : Dict[str, load_pattern] = {}

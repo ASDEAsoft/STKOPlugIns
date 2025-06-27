@@ -82,7 +82,9 @@ class parser:
         self._parse_thickness_scale_factors()
         self._parse_constraints()
         self._parse_diaphragms()
+        self._parse_load_cases()
         
+
         self._parse_load_patterns()
         self._parse_joint_loads()
         self._parse_joint_masses()
@@ -512,6 +514,25 @@ class parser:
         if self.interface is not None:
             self.interface.send_message(f'Parsed {len(self.doc.diaphragm_released_vertices)} diaphragm released vertices', mtype=stko_interface.message_type.INFO)
     
+    # this function parses the load cases and adds them to the document
+    def _parse_load_cases(self):
+        '''
+        *STLDCASE    ; Static Load Cases
+        ; LCNAME, LCTYPE, DESC
+        '''
+        for item in self.commands['*STLDCASE']:
+            words = _split_line(item, skip_empty=False)
+            if len(words) < 3:
+                raise Exception('Invalid load case line: {}, expecting at least 3 values'.format(item))
+            lc_name = words[0]
+            lc_type = words[1]
+            lc_desc = words[2] if len(words) > 2 else ''
+            # create a load case object
+            load_case_obj = load_case(lc_name)
+            # add it to the document
+            self.doc.load_cases[lc_name] = load_case_obj
+        if self.interface is not None:
+            self.interface.send_message(f'Parsed {len(self.doc.load_cases)} load cases', mtype=stko_interface.message_type.INFO)
 
 
     

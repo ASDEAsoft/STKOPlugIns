@@ -19,7 +19,7 @@
     *STORY-ECCEN    ; Story Eccentricity
     *RLS-DIAP    ; Diaphragm Disconnect
 
-*STLDCASE    ; Static Load Cases
+    *STLDCASE    ; Static Load Cases
 *LOADTOMASS    ; Load to Mass
 *EIGEN-CTRL    ; Eigenvalue Analysis Control
 
