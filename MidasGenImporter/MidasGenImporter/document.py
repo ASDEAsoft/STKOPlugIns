@@ -428,19 +428,6 @@ class document:
         # load cases
         self.load_cases : Dict[str, load_case] = {}
 
-        
-        # load patterns (key = load pattern name, value = load pattern object)
-        self.load_patterns : Dict[str, load_pattern] = {}
-        # joint loads (key = vertex id, value = joint load object)
-        self.joint_loads : Dict[int, nodal_load] = {}
-        # joint masses (key = vertex id, value = joint mass object)
-        self.joint_masses : Dict[int, joint_mass] = {}
-        # time history functions (key = function name, value = function object)
-        self.th_functions : Dict[str, th_function] = {}
-        # static load cases (key = load case name, value = load case object)
-        self.load_cases_static : Dict[str, load_case_static] = {}
-        # dynamic load cases (key = load case name, value = load case object)
-        self.load_cases_dynamic : Dict[str, load_case_dynamic] = {}
         # computed tolerance
         self.bbox = FxBndBox()
         self.tolerance = 1.0e-6
@@ -534,18 +521,14 @@ class document:
             for nl, nodes in lc.nodal_loads.items():
                 new_nodes = [old_to_new[n] for n in nodes]
                 lc.nodal_loads[nl] = new_nodes
+            # floor nodal loads, node id is in the value
+            for fl, nodes in lc.floor_loads.items():
+                new_nodes = [old_to_new[n] for n in nodes]
+                lc.floor_loads[fl] = new_nodes
 
 
-        # joint loads (node id is in the key)
-        _joint_loads = {i:j for i,j in self.joint_loads.items()}
-        self.joint_loads = {}
-        for k,v in _joint_loads.items():
-            self.joint_loads[old_to_new[k]] = v
-        # joint masses (node id is in the key)
-        _joint_masses = {i:j for i,j in self.joint_masses.items()}
-        self.joint_masses = {}
-        for k,v in _joint_masses.items():
-            self.joint_masses[old_to_new[k]] = v
+        # TODO: merge also masses
+        
         # get the final number of vertices
         num_vertices_final = len(self.vertices)
         print(f'Merged {num_merged} vertices, from {num_vertices} to {num_vertices_final} within tolerance {self.tolerance:.3g}')
