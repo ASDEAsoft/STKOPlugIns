@@ -163,13 +163,31 @@ class self_weight_load:
     def __repr__(self):
         return self.__str__()
 
+# nodal load
+# where value is a tuple of 6 floats (Fx,Fy,Fz,Mx,My,Mz)
+class nodal_load:
+    def __init__(self, value:Tuple[float,float,float,float,float,float]):
+        self.value = value
+    def __str__(self):
+        return 'Nodal Load: {}'.format(self.value)
+    def __repr__(self):
+        return self.__str__()
+    def __hash__(self):
+        return hash(self.value)
+    def __eq__(self, other):
+        if not isinstance(other, nodal_load):
+            return NotImplemented
+        return self.value == other.value
+
 # The load case class is used to store the properties of a load case
 class load_case:
     def __init__(self, name:str):
         self.name = name
         self.self_weight:self_weight_load = None  # self weight
+        self.nodal_loads:DefaultDict[nodal_load, List[int]] = defaultdict(list)  # dictionary of nodal loads (key: nodal load, value: list of node IDs)
     def __str__(self):
-        return 'Load Case: {}'.format(self.name)
+        return 'Load Case: {}, Self Weight: {}, Nodal Loads: {}'.format(
+            self.name, (self.self_weight is not None), len(self.nodal_loads))
     def __repr__(self):
         return self.__str__()
 
@@ -189,16 +207,7 @@ class load_pattern:
     def __repr__(self):
         return self.__str__()
 
-# a joint load in etabs (load_pattern,value)
-# where value is a tuple of 6 floats (Fx,Fy,Fz,Mx,My,Mz)
-class joint_load:
-    def __init__(self, load_pattern:str, value:Tuple[float,float,float,float,float,float]):
-        self.load_pattern = load_pattern
-        self.value = value
-    def __str__(self):
-        return '{} {}'.format(self.load_pattern, self.value)
-    def __repr__(self):
-        return self.__str__()
+
 
 # a joint concentrated mass in etabs
 # NodeID,MassXY,MassZ,MMIX,MMIY,MMIZ
@@ -309,7 +318,7 @@ class document:
         # load patterns (key = load pattern name, value = load pattern object)
         self.load_patterns : Dict[str, load_pattern] = {}
         # joint loads (key = vertex id, value = joint load object)
-        self.joint_loads : Dict[int, joint_load] = {}
+        self.joint_loads : Dict[int, nodal_load] = {}
         # joint masses (key = vertex id, value = joint mass object)
         self.joint_masses : Dict[int, joint_mass] = {}
         # time history functions (key = function name, value = function object)

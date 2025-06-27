@@ -956,7 +956,7 @@ class builder:
     def _build_conditions_joint_loads(self):
         # group loads by load pattern in the joint_load object
         # key = load pattern name, value = dict of node_id : joint loads
-        pattern_loads : DefaultDict[str, Dict[int, joint_load]] = defaultdict(dict)
+        pattern_loads : DefaultDict[str, Dict[int, nodal_load]] = defaultdict(dict)
         for node_id, load in self.etabs_doc.joint_loads.items():
             # add the joint load to the group
             pattern_loads[load.load_pattern][node_id] = load

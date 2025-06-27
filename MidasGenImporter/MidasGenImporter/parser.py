@@ -105,6 +105,7 @@ class parser:
         self._parse_diaphragms()
         self._parse_load_cases()
         self._parse_self_weight()
+        self._parse_nodal_loads()
         
 
         self._parse_load_patterns()
@@ -591,6 +592,45 @@ class parser:
                 if lc.self_weight is not None:
                     self.interface.send_message(f'Parsed self weight for load case {lc.name}: {lc.self_weight.direction}', mtype=stko_interface.message_type.INFO)
 
+    # this function parses the nodal loads and adds them to the document
+    def _parse_nodal_loads(self):
+        '''
+        *CONLOAD, LCASE_NAME    ; Nodal Loads
+        ; NODE_LIST, FX, FY, FZ, MX, MY, MZ, GROUP,STRTYPENAME
+        '''
+        for item, values in self.commands.items():
+            if not '*CONLOAD' in item:
+                continue
+            # get the load case from the command name
+            command_words = _split_line(item)
+            if len(command_words) < 2:
+                raise Exception('Invalid nodal load command: {}, expecting at least 2 values'.format(item))
+            lc_name = command_words[1]
+            lc = self.doc.load_cases.get(lc_name, None)
+            if lc is None:
+                raise Exception('Load case {} not found for nodal loads'.format(lc_name))
+            # parse the values
+            for value in values:
+                words = _split_line(value, skip_empty=False)  # we may have empty strings (for empty group)
+                if len(words) < 7:
+                    raise Exception('Invalid nodal load line: {}, expecting at least 7 values'.format(value))
+                node_list = _mgt_string_to_id_or_range(words[0])
+                fx = float(words[1])
+                fy = float(words[2])
+                fz = float(words[3])
+                mx = float(words[4])
+                my = float(words[5])
+                mz = float(words[6])
+                # create the nodal load object
+                nodal_load_obj = nodal_load((fx, fy, fz, mx, my, mz))
+                # add it to the load case
+                lc.nodal_loads[nodal_load_obj].extend(node_list)  # add the node IDs to the list of nodes for this load
+        if self.interface is not None:
+            for lc_name, lc in self.doc.load_cases.items():
+                if len(lc.nodal_loads) > 0:
+                    self.interface.send_message(f'Parsed {len(lc.nodal_loads)} nodal loads for load case {lc_name}', mtype=stko_interface.message_type.INFO)
+
+
 
 
 
@@ -613,7 +653,7 @@ class parser:
             if load_pattern not in self.doc.load_patterns:
                 raise Exception('Load pattern {} not found'.format(load_pattern))
             value = tuple([float(words[i]) for i in range(2, 8)])
-            self.doc.joint_loads[id] = joint_load(load_pattern, value)
+            self.doc.joint_loads[id] = nodal_load(load_pattern, value)
     
     # this function parses the joint masses and adds them to the document
     def _parse_joint_masses(self):
