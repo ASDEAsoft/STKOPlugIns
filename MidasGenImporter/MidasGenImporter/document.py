@@ -179,12 +179,31 @@ class nodal_load:
             return NotImplemented
         return self.value == other.value
 
+# beam load
+# where value is a tuple of 3 floats (Fx, Fy, Fz)
+# local is a boolean that indicates if the load is in the local coordinate system of the element
+class beam_load:
+    def __init__(self, value:Tuple[float, float, float], local:bool):
+        self.value = value  # value is a tuple of 3 floats (Fx, Fy, Fz)
+        self.local = local  # if True, the load is in the local coordinate system of the element
+    def __str__(self):
+        return 'Beam Load: {}, Local: {}'.format(self.value, self.local)
+    def __repr__(self):
+        return self.__str__()
+    def __hash__(self):
+        return hash((self.value, self.local))
+    def __eq__(self, other):
+        if not isinstance(other, beam_load):
+            return NotImplemented
+        return self.value == other.value and self.local == other.local
+
 # The load case class is used to store the properties of a load case
 class load_case:
     def __init__(self, name:str):
         self.name = name
         self.self_weight:self_weight_load = None  # self weight
         self.nodal_loads:DefaultDict[nodal_load, List[int]] = defaultdict(list)  # dictionary of nodal loads (key: nodal load, value: list of node IDs)
+        self.beam_loads:DefaultDict[beam_load, List[int]] = defaultdict(list)  # dictionary of beam loads (key: beam load, value: list of element IDs)
     def __str__(self):
         return 'Load Case: {}, Self Weight: {}, Nodal Loads: {}'.format(
             self.name, (self.self_weight is not None), len(self.nodal_loads))
@@ -414,6 +433,14 @@ class document:
             self.constraints[old_to_new[k]] = v
         # diaphragms-released vertices
         self.diaphragm_released_vertices = [old_to_new[n] for n in self.diaphragm_released_vertices]
+        # laods in load cases
+        for lc in self.load_cases.values():
+            # nodal loads, node id is in the value
+            for nl, nodes in lc.nodal_loads.items():
+                new_nodes = [old_to_new[n] for n in nodes]
+                lc.nodal_loads[nl] = new_nodes
+
+
         # joint loads (node id is in the key)
         _joint_loads = {i:j for i,j in self.joint_loads.items()}
         self.joint_loads = {}

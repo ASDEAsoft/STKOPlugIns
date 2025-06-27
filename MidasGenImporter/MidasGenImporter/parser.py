@@ -38,6 +38,11 @@ def _mgt_string_to_id_or_range(s: str) -> List[int]:
 
 class _globals:
     _load_commands = ('*SELFWEIGHT', '*CONLOAD', '*BEAMLOAD', '*PRESSURE')
+    _xyz_to_index = {
+        'X': 0,
+        'Y': 1,
+        'Z': 2,
+    }
 
 # The parser class is used to parse the ETABS text file and build the document
 class parser:
@@ -106,6 +111,7 @@ class parser:
         self._parse_load_cases()
         self._parse_self_weight()
         self._parse_nodal_loads()
+        self._parse_beam_loads()
         
 
         self._parse_load_patterns()
@@ -630,6 +636,66 @@ class parser:
                 if len(lc.nodal_loads) > 0:
                     self.interface.send_message(f'Parsed {len(lc.nodal_loads)} nodal loads for load case {lc_name}', mtype=stko_interface.message_type.INFO)
 
+    # this function parses the beam loads and adds them to the document
+    def _parse_beam_loads(self):
+        '''
+        *BEAMLOAD, LCASE_NAME    ; Element Beam Loads
+        ; ELEM_LIST, CMD, TYPE, DIR, bPROJ, [ECCEN], [VALUE], GROUP
+        where:
+        ECCEN = bECCEN, ECCDIR, I-END, J-END, bJ-END
+        VALUE = D1, P1, D2, P2, D3, P3, D4, P4
+        '''
+        for item, values in self.commands.items():
+            if not '*BEAMLOAD' in item:
+                continue
+            # get the load case from the command name
+            command_words = _split_line(item)
+            if len(command_words) < 2:
+                raise Exception('Invalid beam load command: {}, expecting at least 2 values'.format(item))
+            lc_name = command_words[1]
+            lc = self.doc.load_cases.get(lc_name, None)
+            if lc is None:
+                raise Exception('Load case {} not found for beam loads'.format(lc_name))
+            # parse the values
+            for value in values:
+                words = _split_line(value, skip_empty=False)
+                if len(words) < 18:
+                    raise Exception('Invalid beam load line: {}, expecting at least 18 values'.format(value))
+                elem_list = _mgt_string_to_id_or_range(words[0])
+                cmd = words[1]
+                if cmd != 'BEAM':
+                    raise Exception('Invalid beam load command: {}, expecting BEAM'.format(cmd))
+                load_type = words[2]
+                if load_type != 'UNILOAD':
+                    raise Exception('Invalid beam load type: {}, expecting UNILOAD'.format(load_type))
+                direction = words[3]
+                if len(direction) != 2:
+                    raise Exception('Invalid beam load direction: {}, expecting 2 characters'.format(direction))
+                is_local = direction[0] == 'L'
+                component = _globals._xyz_to_index.get(direction[1], None)
+                if component is None:
+                    raise Exception('Invalid beam load direction component: {}, expecting X, Y or Z'.format(direction[1]))
+                # make sure no projection is used
+                proj = words[4]
+                if proj != 'NO':
+                    raise Exception('Beam loads with projection are not supported, found: {}'.format(words[4]))
+                # take the first value of eccen, we don't support eccen loads yet, so make sure it's = NO
+                eccen = words[5]
+                if eccen != 'NO':
+                    raise Exception('Beam loads with eccen are not supported, found: {}'.format(eccen))
+                # take the second value of VALUE, that's the constant value in case of UNILOAD
+                load_component = float(words[11])
+                load_value = (load_component if component == 0 else 0.0,
+                              load_component if component == 1 else 0.0,
+                              load_component if component == 2 else 0.0)
+                # create the beam load object
+                beam_load_obj = beam_load(load_value, is_local)
+                # add the load to the load case
+                lc.beam_loads[beam_load_obj].extend(elem_list)  # add the element IDs to the list of elements for this load
+        if self.interface is not None:
+            for lc_name, lc in self.doc.load_cases.items():
+                if len(lc.beam_loads) > 0:
+                    self.interface.send_message(f'Parsed {len(lc.beam_loads)} beam loads for load case {lc_name}', mtype=stko_interface.message_type.INFO)
 
 
 
