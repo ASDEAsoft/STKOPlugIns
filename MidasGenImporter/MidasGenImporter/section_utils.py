@@ -66,20 +66,22 @@ def _get_offset_anchor(shape: int, shape_data:List[float], offset_type: str) -> 
     else:
         raise ValueError(f"Unsupported offset type: {offset_type}")
 
-def get_section_centroid(shape: int, shape_data:List[float]) -> Tuple[float, float]:
+def get_section_centroid_and_area(shape: int, shape_data:List[float]) -> Tuple[float, float, float]:
     """
-    Returns the centroid coordinates (y, z) of a section based on its shape type.
+    Returns the centroid coordinates (y, z) of a section based on its shape type and the area.
     Note: returns the centroid wrt the geometric center of the section.
     Args:
         shape (int): The shape type identifier of the section.
         shape_data (List[float]): List containing shape data as per *.MGT file format.
     Returns:
-        Tuple[float, float]: The centroid coordinates (y, z) of the section.
+        Tuple[float, float, float]: The centroid coordinates (y, z) of the section and the area.
     Raises:
         ValueError: If the provided shape type is not supported.
     """
     if shape == section.shape_type.SB:
-        return (0.0, 0.0)
+        H, B = shape_data[:2]
+        A = H * B
+        return (0.0, 0.0, A)
     elif shape == section.shape_type.L:
         H, B, tw, tf = shape_data[:4]
         # compute the areas (same as T-section)
@@ -97,7 +99,7 @@ def get_section_centroid(shape: int, shape_data:List[float]) -> Tuple[float, flo
         # wrt to the geometric center of the section
         centroid_y -= B / 2
         centroid_z -= H / 2
-        return (centroid_y, centroid_z)
+        return (centroid_y, centroid_z, A)
     elif shape == section.shape_type.T:
         H, B, tw, tf = shape_data[:4]
         # compute the centroid for a T-section knowing that the 
@@ -117,13 +119,13 @@ def get_section_centroid(shape: int, shape_data:List[float]) -> Tuple[float, flo
         # wrt to the geometric center of the section
         centroid_y -= B / 2
         centroid_z -= H / 2
-        return (centroid_y, centroid_z)
+        return (centroid_y, centroid_z, A)
     else:
         raise ValueError(f"Unsupported section shape: {shape}")
 
-def get_section_offset(shape : int, shape_data:List[str], offset_data:List[str]) -> Tuple[float, float]:
+def get_section_offset_and_area(shape : int, shape_data:List[str], offset_data:List[str]) -> Tuple[float, float, float]:
     """
-    Calculates the offset of a section based on its shape, shape data, and offset data.
+    Calculates the offset and area of a section based on its shape, shape data, and offset data.
     Args:
         shape (int): The type of the section shape, typically an enum value from `frame_section.shape_type`.
         shape_data (List[str]): List of strings containing data specific to the section shape.
@@ -136,13 +138,13 @@ def get_section_offset(shape : int, shape_data:List[str], offset_data:List[str])
             - iVERT (str): Vertical offset indicator.
             - vUSER (str): User-defined vertical offset.
     Returns:
-        Tuple[float, float]: The calculated (horizontal, vertical) offset for the section.
+        Tuple[float, float, float]: The calculated (horizontal, vertical) offset for the section and the area.
     Raises:
         ValueError: If `offset_data` does not contain exactly 7 elements or if the section shape is unsupported.
     """
     
     # get centroid
-    centroid_y, centroid_z = get_section_centroid(shape, shape_data)
+    centroid_y, centroid_z, area = get_section_centroid_and_area(shape, shape_data)
     center_y, center_z = centroid_y, centroid_z
 
     # check offset data
@@ -219,7 +221,7 @@ def get_section_offset(shape : int, shape_data:List[str], offset_data:List[str])
                     ay = ay + horizontal_offset * _globals.u_movement[offset_type][0] - center_y * _globals.special_factor[offset_type][0]
                     az = az + vertical_offset * _globals.u_movement[offset_type][1] - center_z * _globals.special_factor[offset_type][1]
 
-    return (ay, az)
+    return (ay, az, area)
 
 def test_T_section():
     from matplotlib import pyplot as plt
@@ -228,7 +230,7 @@ def test_T_section():
     tw = 10.0
     tf = 80.0
     shape_data = [H, B, tw, tf]
-    centroid_y, centroid_z = get_section_centroid(section.shape_type.T, shape_data)
+    centroid_y, centroid_z, area = get_section_centroid_and_area(section.shape_type.T, shape_data)
     # create y,z points for the T-section wrt the center
     Y = [-tw/2, tw/2, tw/2, B/2, B/2, -B/2, -B/2, -tw/2, -tw/2]
     Z = [-H/2, -H/2, H/2-tf, H/2-tf, H/2, H/2, H/2-tf, H/2-tf, -H/2]
@@ -246,7 +248,7 @@ def test_L_section():
     tw = 10.0
     tf = 10.0
     shape_data = [H, B, tw, tf]
-    centroid_y, centroid_z = get_section_centroid(section.shape_type.L, shape_data)
+    centroid_y, centroid_z, area = get_section_centroid_and_area(section.shape_type.L, shape_data)
     # create y,z points for the T-section wrt the center
     Y = [-B/2, -B/2+tw, -B/2+tw, B/2, B/2, -B/2, -B/2]
     Z = [-H/2, -H/2, H/2-tf, H/2-tf, H/2, H/2, -H/2]
@@ -259,8 +261,8 @@ def test_L_section():
 
 def test_section(shape:int, shape_info:List[float], offset_data:List[str]):
     from matplotlib import pyplot as plt
-    centroid_y, centroid_z = get_section_centroid(shape, shape_info)
-    offset_y, offset_z = get_section_offset(shape, shape_info, offset_data)
+    centroid_y, centroid_z, area = get_section_centroid_and_area(shape, shape_info)
+    offset_y, offset_z, area = get_section_offset_and_area(shape, shape_info, offset_data)
     # Visualization can be added here if needed
     H, B, tw, tf = shape_info[:4]
     if shape == section.shape_type.T:

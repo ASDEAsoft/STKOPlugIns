@@ -11,8 +11,10 @@ import MidasGenImporter.stko_interface_plain
 import MidasGenImporter.stko_interface_gui
 import MidasGenImporter.document
 import MidasGenImporter.section_utils
+import MidasGenImporter.localaxes_utils
 importlib.reload(MidasGenImporter.document)
 importlib.reload(MidasGenImporter.section_utils)
+importlib.reload(MidasGenImporter.localaxes_utils)
 importlib.reload(MidasGenImporter.parser)
 importlib.reload(MidasGenImporter.builder)
 importlib.reload(MidasGenImporter.stko_interface)

@@ -20,7 +20,7 @@
     *RLS-DIAP    ; Diaphragm Disconnect
 
     *STLDCASE    ; Static Load Cases
-*LOADTOMASS    ; Load to Mass
+    *LOADTOMASS    ; Load to Mass
 
 
     *USE-STLD, xxx

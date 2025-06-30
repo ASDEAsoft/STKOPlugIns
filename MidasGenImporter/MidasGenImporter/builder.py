@@ -1237,7 +1237,7 @@ class builder:
         step.commitXObjectChanges()
 
     # build the damping step
-    def _build_damping(self, lc : load_case_dynamic):
+    def _build_damping(self, lc):
         # create a new analysis step
         step = MpcAnalysisStep()
         step.id = self.stko.new_analysis_step_id()

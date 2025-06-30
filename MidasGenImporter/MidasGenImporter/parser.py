@@ -1,7 +1,8 @@
 from MidasGenImporter.document import *
 from MidasGenImporter.stko_interface import stko_interface
 from MidasGenImporter.units_utils import unit_system
-from MidasGenImporter.section_utils import get_section_offset, test_section
+from MidasGenImporter.section_utils import get_section_offset_and_area
+from MidasGenImporter.localaxes_utils import STKOLocalAxesConvention, MIDASLocalAxesConvention
 from collections import defaultdict
 import os
 import math
@@ -196,14 +197,8 @@ class parser:
         self._parse_pressure_loads()
         self._parse_floor_loads()
         self._check_load_cases()
+        self._parse_masses()
 
-        self._parse_load_patterns()
-        self._parse_joint_loads()
-        self._parse_joint_masses()
-        self._parse_time_history_functions()
-        self._parse_load_case_static()
-        self._parse_load_case_time_history()
-    
     # this function parses the units and adds them to the document
     # the units are stored in the document as a dictionary
     def _parse_units(self):
@@ -249,7 +244,6 @@ class parser:
         ; iEL, TYPE, iMAT, iPRO, iN1, iN2, iN3, iN4, iN5, iN6, iN7, iN8     ; Solid  Element
         what's iWID in plate and wall? (WALL ID, not used)
         '''
-        all_types = set()
         for item in self.commands['*ELEMENT']:
             words = _split_line(item)
             # index and type + material and property for all elements
@@ -438,8 +432,8 @@ class parser:
                 if data1[0] != '2':
                     raise Exception('Invalid DATA1 type: {}, expecting 2 for DBUSER'.format(data1[0]))
                 shape_info = [float(i) for i in data1[1:]]
-                offset_y, offset_z = get_section_offset(shape, shape_info, offset_data)
-                self.doc.sections[sec_id] = section(sec_name, shape, shape_info, offset_y, offset_z)
+                offset_y, offset_z, area = get_section_offset_and_area(shape, shape_info, offset_data)
+                self.doc.sections[sec_id] = section(sec_name, shape, shape_info, offset_y, offset_z, area)
             else:
                 raise Exception('Unknown section type: {}'.format(sec_type))
         if self.interface is not None:
@@ -997,187 +991,182 @@ class parser:
             if self.interface is not None:
                 self.interface.send_message(f'Checking load case {lc_name}', mtype=stko_interface.message_type.INFO)
             lc.check()
-
-
-
-
-
-
-    # this function parses the load patterns and adds them to the document
-    def _parse_load_patterns(self):
-        for item in self.commands['* LOAD_PATTERNS']:
-            words = item.split(',')
-            name = words[0]
-            is_auto = words[1] == 'Yes'
-            type = words[2]
-            self_wt_mult = float(words[3])
-            self.doc.load_patterns[name] = load_pattern(name, is_auto, type, self_wt_mult)
     
-    # this function parses the joint loads and adds them to the document
-    def _parse_joint_loads(self):
-        for item in self.commands['* JOINT_LOADS']:
-            words = item.split(',')
-            id = int(words[0])
-            load_pattern = words[1]
-            if load_pattern not in self.doc.load_patterns:
-                raise Exception('Load pattern {} not found'.format(load_pattern))
-            value = tuple([float(words[i]) for i in range(2, 8)])
-            self.doc.joint_loads[id] = nodal_load(load_pattern, value)
-    
-    # this function parses the joint masses and adds them to the document
-    def _parse_joint_masses(self):
-        for item in self.commands['* JOINT_ADDITIONAL_MASS']:
-            words = item.split(',')
-            id = int(words[0])
-            mass_xy = float(words[1])
-            mass_z = float(words[2])
-            mmi_x = float(words[3])
-            mmi_y = float(words[4])
-            mmi_z = float(words[5])
-            self.doc.joint_masses[id] = joint_mass(mass_xy, mass_z, mmi_x, mmi_y, mmi_z)
-    
-    # this function parses the time history functions and adds them to the document
-    def _parse_time_history_functions(self):
-        for item in self.commands['* TH_FUNCTIONS']:
-            words = item.split(',')
-            name = words[0]
-            dt = float(words[1])
-            file_name = words[2]
-            # the input file name might be absolute on the user's machine
-            # if we can find the file using the absolute path, we will use it
-            # otherwise we will use the relative path
-            # to the current self.fname
-            if os.path.exists(file_name):
-                # it exists on this machine, either relative or absolute
-                file_name = os.path.abspath(file_name)
-                print('Time history function file {} found'.format(file_name))
+    # parses all the mass sources and makes them nodal masses
+    def _parse_masses(self):
+        # nodal masses, then we group them
+        node_mass : DefaultDict[int, Math.vec3] = defaultdict(Math.vec3)
+        # first build the masses from densities.
+        # parse frame elements
+        ele_length_map : Dict[int, float] = {}
+        for ele_id, ele in self.doc.frames.items():
+            # skip link elements
+            if ele.link is not None:
+                continue
+            # get element length
+            n1, n2 = ele.nodes
+            node1 = self.doc.vertices.get(n1, None)
+            node2 = self.doc.vertices.get(n2, None)
+            if node1 is None or node2 is None:
+                raise Exception(f'Frame element {ele_id} has invalid nodes: {n1}, {n2}')
+            length = (node2 - node1).norm()
+            ele_length_map[ele_id] = length
+            # get material density
+            mat:elastic_material = self.doc.elastic_materials.get(ele.mat, None)
+            if mat is None:
+                raise Exception(f'Frame element {ele_id} has invalid material: {ele.mat}')
+            density = mat.rho
+            # get the section area
+            sec:section = self.doc.sections.get(ele.sec, None)
+            if sec is None:
+                raise Exception(f'Frame element {ele_id} has invalid section: {ele.sec}')
+            area = sec.area
+            # lumped mass
+            mass = density * length * area / 2.0
+            mass = Math.vec3(mass, mass, mass)
+            # add the mass to the 2 nodes of the element
+            node_mass[n1] += mass
+            node_mass[n2] += mass
+        # parse area elements
+        ele_area_map : Dict[int, float] = {}
+        for ele_id, ele in self.doc.areas.items():
+            # get nodes
+            nodes = []
+            for node_id in ele.nodes:
+                node = self.doc.vertices.get(node_id, None)
+                if node is None:
+                    raise Exception(f'Area element {ele_id} has invalid node: {node_id}')
+                nodes.append(node)
+            # compute element area (they can have 3 or 4 nodes)
+            p01 = nodes[1] - nodes[0]  # vector from node 0 to node 1
+            p02 = nodes[2] - nodes[0]  # vector from node 0 to node 2
+            area = p01.cross(p02).norm() / 2.0
+            if len(nodes) == 4:
+                p03 = nodes[3] - nodes[0]
+                area += p02.cross(p03).norm() / 2.0
+            ele_area_map[ele_id] = area
+            # get material density
+            mat:elastic_material = self.doc.elastic_materials.get(ele.mat, None)
+            if mat is None:
+                raise Exception(f'Area element {ele_id} has invalid material: {ele.mat}')
+            density = mat.rho
+            # get the section thickness
+            sec:thickness = self.doc.thicknesses.get(ele.sec, None)
+            if sec is None:
+                raise Exception(f'Area element {ele_id} has invalid section: {ele.sec}')
+            thick = sec.in_thick
+            # lumped mass
+            mass = density * area * thick / len(nodes)  # divide by number of nodes to distribute the mass evenly
+            mass = Math.vec3(mass, mass, mass)
+            # add the mass to the nodes of the element
+            for node_id in ele.nodes:
+                node_mass[node_id] += mass
+        print(f'Parsed {len(node_mass)} nodal masses from densities')
+        # now parse the load to masses
+        '''
+        *LOADTOMASS    ; Load to Mass
+        ; DIR, bNODAL, bBEAM, bFLOOR, bPRES, GRAV
+        ; LCNAME1, FACTOR1, LCNAME2, FACTOR2, ...   ; from line 1
+        '''
+        # scale factors
+        direction = Math.vec3(0.0, 0.0, 0.0)
+        b_nodal = False
+        b_beam = False
+        b_floor = False
+        b_pres = False
+        grav = 0.0
+        for line in self.commands['*LOADTOMASS']:
+            words = _split_line(line, skip_empty=False)
+            lc_name = words[0]
+            if lc_name not in self.doc.load_cases:
+                # this is a new line DIR, bNODAL, bBEAM, bFLOOR, bPRES, GRAV
+                if len(words) != 6:
+                    raise Exception('Invalid LOADTOMASS line: {}, expecting 6 values'.format(line))
+                xyz = words[0]
+                direction.x = 1.0 if 'X' in xyz else 0.0
+                direction.y = 1.0 if 'Y' in xyz else 0.0
+                direction.z = 1.0 if 'Z' in xyz else 0.0
+                b_nodal = words[1] == 'YES'
+                b_beam = words[2] == 'YES'
+                b_floor = words[3] == 'YES'
+                b_pres = words[4] == 'YES'
+                grav = float(words[5])
             else:
-                # it doesn't exist, let's find the file name
-                file_name_only = os.path.basename(file_name)
-                print('Time history function file {} not found, searching for it in the same folder as the input file...'.format(file_name_only))
-                # let's search for the file in the same folder as the input file or in the sub-directories
-                # let's get the directory of the input file
-                input_file_dir = os.path.dirname(self.fname)
-                # let's search for the file in the same folder as the input file or in the sub-directories
-                for root, dirs, files in os.walk(input_file_dir):
-                    if file_name_only in files:
-                        file_name = os.path.join(root, file_name_only)
-                        print('   Time history function file {} found'.format(file_name))
-                        break
-                else:
-                    # we didn't find the file
-                    raise Exception('Time history function file {} not found'.format(file_name_only))
-            # read the file
-            with open(file_name, 'r') as ifile:
-                values = [float(pline) for pline in (line.strip() for line in ifile.readlines()) if pline]
-            # save it
-            self.doc.th_functions[name] = th_function(name, dt, values)
-    
-    # parses static load cases
-    def _parse_load_case_static(self):
-        '''
-        command format:
-        * LOAD_CASES_LINEAR_STATIC
-        # Name,Group,MassSource,StiffType,LoadType,LoadName,LoadSF,DesignType
-        '''
-        for item in self.commands['* LOAD_CASES_LINEAR_STATIC']:
-            words = item.split(',')
-            name = words[0]
-            group = words[1]
-            mass_source = words[2]
-            stiff_type = words[3]
-            load_type = words[4]
-            load_name = words[5]
-            load_sf = float(words[6])
-            design_type = words[7] if len(words) > 7 else None
-            # add the load case to the document or get existing one
-            lc = self.doc.load_cases_static.get(name, None)
-            if lc is None:
-                # create a new load case
-                lc = load_case_static(name)
-                self.doc.load_cases_static[name] = lc
-            # add the load pattern to the load case
-            lc.load_patterns.append((load_name, load_sf))
-            # check kinematics
-            if self.doc.kinematics: # if already defined...
-                if stiff_type != self.doc.kinematics:
-                    self.interface.send_message(f'[LOAD_CASES_LINEAR_STATIC {name}]: kinematics type {stiff_type} does not match the existing kinematics type {self.doc.kinematics}', 
-                                                mtype=stko_interface.message_type.WARNING)
-            else:
-                # set the kinematics type
-                self.doc.kinematics = stiff_type
-    
-    # parse time history load cases
-    def _parse_load_case_time_history(self):
-        '''
-        command format:
-        * LOAD_CASES_TH_NL_DIRECT_INTEGRATION
-        # Name,MassSource,InitialCond,NonlinCase,LoadType,LoadName,Function,TransAccSF,TimeFactor,ArrivalTime,Angle,GeoNonlin,
-        # NumSteps,StepSize,ProBy,MassCoeff,StiffCoeff,ProTimeVal1,ProDamping1,ProTimeVal2,ProDamping2,Mode4Ratio,ModalCase,
-        # IntType,Gamma,Beta,Alpha,SolScheme,MaxSize,MinSize,EventTol,
-        # MaxEvents,MaxCSIters,MaxNRIters,IterTol,LineSearch,MaxSearches,SearchTol,SearchFact,DesignType,GUID,Notes
+                # this is a new line CNAME1, FACTOR1, LCNAME2, FACTOR2, ...
+                if len(words) % 2 != 0:
+                    raise Exception('Invalid LOADTOMASS line: {}, expecting an even number of values'.format(line))
+                # parse the load cases and factors
+                for i in range(0, len(words), 2):
+                    lc_name = words[i]
+                    factor = float(words[i + 1])
+                    lc = self.doc.load_cases.get(lc_name, None)
+                    if lc is None:
+                        raise Exception(f'Load case {lc_name} not found for LOADTOMASS')
+                    # now we can convert the load in Z direction to mass:
+                    # mass_vector = load_z:float * factor / grav * direction (*length or area for beam loads or pressure loads)
+                    if b_nodal:
+                        for load, nodes in lc.nodal_loads.items():
+                            Fz = load.value[2]
+                            if Fz == 0.0: continue
+                            mass = Fz * factor / grav * direction
+                            for node_id in nodes:
+                                node_mass[node_id] += mass
+                    if b_floor:
+                        for load, nodes in lc.floor_loads.items():
+                            Fz = load.value[2]
+                            if Fz == 0.0: continue
+                            mass = Fz * factor / grav * direction
+                            for node_id in nodes:
+                                node_mass[node_id] += mass
+                    if b_beam:
+                        for load, elems in lc.beam_loads.items():
+                            if load.local:
+                                raise Exception('Local beam loads are not supported for LOADTOMASS')
+                            Fz = load.value[2]
+                            if Fz == 0.0: continue
+                            # get the length of the element
+                            for elem_id in elems:
+                                length = ele_length_map.get(elem_id, None)
+                                if length is None:
+                                    raise Exception(f'Length of element {elem_id} not found for LOADTOMASS')
+                                mass = Fz * factor / grav * direction * length / len(ele.nodes)  # divide by number of nodes to distribute the mass evenly
+                                # get the nodes of the element
+                                ele = self.doc.frames.get(elem_id, None)
+                                if ele is None:
+                                    raise Exception(f'Element {elem_id} not found for LOADTOMASS')
+                                for ele_node in ele.nodes:
+                                    node_mass[ele_node] += mass
+                    if b_pres:
+                        for load, elems in lc.pressure_loads.items():
+                            # get the area of the element
+                            for elem_id in elems:
+                                # compute the component in the global Z direction
+                                if load.local:
+                                    ele = self.doc.areas.get(elem_id, None)
+                                    T = MIDASLocalAxesConvention.get_local_axes([self.doc.vertices[i] for i in ele.nodes])  # this is just to check if the load is local
+                                    global_value = T * Math.vec3(*load.value)
+                                    Fz = global_value.z  # global Z direction
+                                else:
+                                    Fz = load.value[2]  # global Z direction
+                                if Fz == 0.0: continue
+                                area = ele_area_map.get(elem_id, None)
+                                if area is None:
+                                    raise Exception(f'Area of element {elem_id} not found for LOADTOMASS')
+                                mass = Fz * factor / grav * direction * area / len(ele.nodes)  # divide by number of nodes to distribute the mass evenly
+                                # get the nodes of the element
+                                ele = self.doc.areas.get(elem_id, None)
+                                if ele is None:
+                                    raise Exception(f'Element {elem_id} not found for LOADTOMASS')
+                                for ele_node in ele.nodes:
+                                    node_mass[ele_node] += mass
 
-        Now we just need:
-        - Name
-        - LoadType (Accel or TODO: ask kristijan if we need to support other types)
-        - LoadName (U1, U2, U3, R1, R2, R3, direction, TODO: ask kristijan if the last 3 are correct)
-        - Function (name of the time history function)
-        - TransAccSF (scale factor for the acceleration time history function)
-        - GeoNonlin (geometric nonlinearity)
-        - NumSteps (number of steps)
-        - StepSize (step size)
-        - ProBy (Damping: proportional by, Direct, Period Ratio, or Frequency Ratio)
-        - MassCoeff (mass coefficient, only if ProBy is Direct)
-        - StiffCoeff (stiffness coefficient, only if ProBy is Direct)
-        - ProTimeVal1 (proportional time value 1, only if ProBy is Period Ratio or Frequency Ratio)
-        - ProDamping1 (proportional damping 1, only if ProBy is Period Ratio or Frequency Ratio)
-        - ProTimeVal2 (proportional time value 2, only if ProBy is Period Ratio or Frequency Ratio)
-        - ProDamping2 (proportional damping 2, only if ProBy is Period Ratio or Frequency Ratio)
-        - Mode4Ratio (reference mode index for ratio, only if ProBy is Period Ratio or Frequency Ratio)
-        '''
-        # iterate over the load cases
-        for item in self.commands['* LOAD_CASES_TH_NL_DIRECT_INTEGRATION']:
-            words = item.split(',')
-            name = words[0]
-            # get existing or generare a new load case
-            lc = self.doc.load_cases_dynamic.get(name, None)
-            if lc is None:
-                # parse other parameters
-                load_type = words[4]
-                kinematics = words[11]
-                num_steps = int(words[12])
-                step_size = float(words[13])
-                pro_by = words[14]
-                if pro_by == 'Direct':
-                    mass_coeff = float(words[15])
-                    stiff_coeff = float(words[16])
-                    pro_time_val1 = 0.0
-                    pro_damping1 = 0.0
-                    pro_time_val2 = 0.0
-                    pro_damping2 = 0.0
-                    mode4_ratio = 0
-                else:
-                    mass_coeff = 0.0
-                    stiff_coeff = 0.0
-                    pro_time_val1 = float(words[17])
-                    pro_damping1 = float(words[18])
-                    pro_time_val2 = float(words[19])
-                    pro_damping2 = float(words[20])
-                    mode4_ratio = int(words[21])
-                # create the load case
-                lc = load_case_dynamic(name, load_type, num_steps, step_size,
-                                    pro_by, mass_coeff, stiff_coeff, pro_time_val1, pro_damping1,
-                                    pro_time_val2, pro_damping2, mode4_ratio)
-                # add the load case to the document
-                self.doc.load_cases_dynamic[name] = lc
-                # check kinematics
-                if self.doc.kinematics: # if already defined...
-                    if kinematics != self.doc.kinematics:
-                        self.interface.send_message(f'[LOAD_CASES_TH_NL_DIRECT_INTEGRATION {name}]: kinematics type {kinematics} does not match the existing kinematics type {self.doc.kinematics}', 
-                                                    mtype=stko_interface.message_type.WARNING)
-            # parse direction, function and scale factor
-            load_name = words[5]
-            function = words[6]
-            scale_factor = float(words[7])
-            # add the load pattern to the load case
-            lc.functions.append((function, load_name, scale_factor))
+        # merge nodal masses with same value
+        for node_id, mass in node_mass.items():
+            key = (mass.x, mass.y, mass.z)  # use a tuple as key to avoid duplicates
+            self.doc.masses[key].append(node_id)  # add the node ID to the list of nodes for this mass
+        print(f'reduced to {len(self.doc.masses)} grouped nodal masses from densities')
+
+
+
+
+

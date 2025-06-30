@@ -90,12 +90,17 @@ class section:
         SB = 1
         L = 2
         T = 3
-    def __init__(self, name:str, type:int, shape_info:List[float], offset_y:float, offset_z:float):
+    def __init__(self, name:str, type:int, shape_info:List[float], offset_y:float, offset_z:float, area:float):
         self.name = name
         self.type = type  # type of the section (SB, L, T)
         self.shape_info = shape_info  # list of floats with the shape information
         self.offset_y = offset_y  # offset in the y direction
         self.offset_z = offset_z  # offset in the z direction
+        self.area = area  # area of the section
+    def __str__(self):
+        return '{} {} {} {} {} {}'.format(self.name, self.type, self.shape_info, self.offset_y, self.offset_z, self.area)
+    def __repr__(self):
+        return self.__str__()
 
 # The thickness class is used to store the properties of an area material
 class thickness:
@@ -301,95 +306,6 @@ class load_case:
             if len(merged_dict) > 0:
                 print('   Handled {} duplicated targets in {}'.format(len(merged_dict), label))
 
-
-
-
-
-
-
-
-
-# a load pattern in etabs (Name,IsAuto,Type,SelfWtMult)
-class load_pattern:
-    def __init__(self, name:str, is_auto:bool, type:str, self_wt_mult:float):
-        self.name = name
-        self.is_auto = is_auto
-        self.type = type
-        self.self_wt_mult = self_wt_mult
-    def __str__(self):
-        return '{}: {} {} {}'.format(self.name, self.is_auto, self.type, self.self_wt_mult)
-    def __repr__(self):
-        return self.__str__()
-
-
-
-# a joint concentrated mass in etabs
-# NodeID,MassXY,MassZ,MMIX,MMIY,MMIZ
-class joint_mass:
-    def __init__(self, mass_xy:float, mass_z:float, mmi_x:float, mmi_y:float, mmi_z:float):
-        self.mass_xy = mass_xy
-        self.mass_z = mass_z
-        self.mmi_x = mmi_x
-        self.mmi_y = mmi_y
-        self.mmi_z = mmi_z
-    def __str__(self):
-        return '{} {} {} {} {}'.format(self.mass_xy, self.mass_z, self.mmi_x, self.mmi_y, self.mmi_z)
-    def __repr__(self):
-        return self.__str__()
-
-# time history function in etabs
-class th_function:
-    def __init__(self, name:str, dt:float, values:List[float]):
-        self.name = name
-        self.dt = dt
-        self.values = values
-    def __str__(self):
-        return '{} {} {}'.format(self.name, self.dt, self.values)
-    def __repr__(self):
-        return self.__str__()
-
-# the static load case
-class load_case_static:
-    def __init__(self, name:str):
-        self.name = name
-        self.load_patterns : List[Tuple[str, float]] = [] # list of tuples (load_pattern_name, multiplier)
-    def __str__(self):
-        return '{}: {}'.format(self.name, self.load_patterns)
-    def __repr__(self):
-        return self.__str__()
-
-# the dynamic load case
-class load_case_dynamic:
-    def __init__(self, name:str, load_type:str, num_steps:int, step_size:float,
-                 pro_by:str, mass_coeff:float, stiff_coeff:float,
-                 pro_time_val1:float, pro_damping1:float,
-                 pro_time_val2:float, pro_damping2:float,
-                 mode4_ratio:int):
-        self.name = name
-        self.functions : List[Tuple[str, str, float]] = [] # list of tuples (function_name, direction (U1, U2....), multiplier)
-        self.load_type = load_type
-        self.num_steps = num_steps
-        self.step_size = step_size
-        self.pro_by = pro_by
-        self.mass_coeff = mass_coeff
-        self.stiff_coeff = stiff_coeff
-        self.pro_time_val1 = pro_time_val1
-        self.pro_damping1 = pro_damping1
-        self.pro_time_val2 = pro_time_val2
-        self.pro_damping2 = pro_damping2
-        self.mode4_ratio = mode4_ratio
-    def __str__(self):
-        return ('Name: {}, Load Type: {}, Functions: {}, '
-                'Num Steps: {}, Step Size: {}, Pro By: {}, '
-                'Mass Coeff: {}, Stiff Coeff: {}, Pro Time Val1: {}, Pro Damping1: {}, '
-                'Pro Time Val2: {}, Pro Damping2: {}, Mode4 Ratio: {}').format(
-            self.name, self.load_type, self.functions,
-            self.num_steps, self.step_size, self.pro_by,
-            self.mass_coeff, self.stiff_coeff, self.pro_time_val1, self.pro_damping1,
-            self.pro_time_val2, self.pro_damping2, self.mode4_ratio)
-    def __repr__(self):
-        return self.__str__()
-
 # The document class is used to store the model data
 class document:
 
@@ -427,14 +343,13 @@ class document:
         self.diaphragm_released_vertices : List[int] = []
         # load cases
         self.load_cases : Dict[str, load_case] = {}
-
+        # nodal masses in X,Y, and Z directions and the associated nodes
+        self.masses : DefaultDict[Tuple[float, float, float], List[int]] = defaultdict(list)
         # computed tolerance
         self.bbox = FxBndBox()
         self.tolerance = 1.0e-6
         # penalty value for the model
         self.penalty_hinges = 1.0e12
-        # the kinematic type: (None, P-Delta, Large Displacements)
-        self.kinematics : str = ''
 
     # return the string representation of the document
     def __str__(self):
