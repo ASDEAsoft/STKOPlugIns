@@ -19,7 +19,7 @@ class _globals:
         'R3' : 'Rz',
     }
 
-# a utility class to store the components of the ETABS model
+# a utility class to store the components of the MIDAS model
 # that will be part of a single geometry in STKO
 class _geometry:
     def __init__(self):
@@ -34,7 +34,7 @@ class _geometry:
         # The geometry type
         self.type : TopAbs_ShapeEnum = TopAbs_ShapeEnum.TopAbs_COMPOUND
 
-# maps an ETABS entity (vertex, frame, area) to a STKO geometry and subshape id
+# maps an MIDAS entity (vertex, frame, area) to a STKO geometry and subshape id
 class _geometry_map_item:
     def __init__(self, geom:MpcGeometry, subshape_id:int):
         self.geom = geom
@@ -46,17 +46,17 @@ class _interaction_map_item:
         self.interaction = interaction
 
 # this class is used to build the geometry of the model
-# it uses the ETABS document to build the STKO document
+# it uses the MIDAS document to build the STKO document
 class builder:
 
     def __init__(
             self,
-            etabs_doc : document,
+            midas_doc : document,
             stko : stko_interface,
         ):
         
-        # the ETABS document to import in STKO
-        self.etabs_doc = etabs_doc
+        # the MIDAS document to import in STKO
+        self.midas_doc = midas_doc
 
         # the STKO document interface
         self.stko = stko
@@ -64,7 +64,7 @@ class builder:
         # the grouped geometries (key = id in STKO)
         self._geoms : Dict[int, _geometry] = {}
 
-        # mapping of the ETABS entities to the STKO entities
+        # mapping of the MIDAS entities to the STKO entities
         self._vertex_map : Dict[int, _geometry_map_item] = {}
         self._frame_map : Dict[int, _geometry_map_item] = {} 
         self._area_map : Dict[int, _geometry_map_item] = {}
@@ -72,8 +72,6 @@ class builder:
         self._elastic_material_map : Dict[str, Tuple[MpcProperty, MpcProperty]] = {} # value = tuple (uniaxial material, NDMaterial)
         self._area_property_map : Dict[str, Union[MpcProperty, MpcElementProperty]] = {}
         self._frame_section_map : Dict[str, MpcProperty] = {}
-        self._frame_nonlinear_hinge_map : Dict[str, MpcProperty] = {}
-        self._frame_nonlinear_stiff_mat : MpcProperty = None
 
         # keep track of stko indices for different entities
         # the default linear time series
@@ -84,37 +82,36 @@ class builder:
         self._mp_ids : List[int] = []
         # pattern-name to force condition ids
         self._pattern_load_ids : DefaultDict[str, List[int]] = defaultdict(list)
-        # time history name to condition ids
-        self._th_ids : Dict[str, int] = {}
 
         # process
         try:
             self.stko.start()
             self._build_geometry_groups()
             self._build_geometries()
-            self._build_interactions()
-            self._build_local_axes()
-            self._build_definitions()
-            self._build_elastic_materials()
-            self._build_area_sections()
-            self._assign_area_sections()
-            self._build_frame_sections()
-            self._build_frame_nonlinear_hinges()
-            self._assign_frame_sections()
-            self._build_conditions_restraints()
-            self._build_conditions_diaphragms()
-            self._build_conditions_joint_loads()
-            self._build_conditions_joint_masses()
-            self._build_mesh()
-            self._build_analysis_step_recorder()
-            self._build_analysis_step_constraint_pattern()
-            self._build_analysis_step_load_patterns()
-            self._build_analysis('Gravity Analysis', 'Static', load_const=True, wipe=False, duration=1.0, num_incr=10)
-            self._build_eigen('Post Gravity')
-            done, duration, num_incr = self._build_uniform_excitation()
-            if done:
-                self._build_monitors()
-                self._build_analysis('Dynamic Analysis', 'Transient', load_const=True, wipe=True, duration=duration, num_incr=num_incr)
+            if False:
+                self._build_interactions()
+                self._build_local_axes()
+                self._build_definitions()
+                self._build_elastic_materials()
+                self._build_area_sections()
+                self._assign_area_sections()
+                self._build_frame_sections()
+                self._build_frame_nonlinear_hinges()
+                self._assign_frame_sections()
+                self._build_conditions_restraints()
+                self._build_conditions_diaphragms()
+                self._build_conditions_joint_loads()
+                self._build_conditions_joint_masses()
+                self._build_mesh()
+                self._build_analysis_step_recorder()
+                self._build_analysis_step_constraint_pattern()
+                self._build_analysis_step_load_patterns()
+                self._build_analysis('Gravity Analysis', 'Static', load_const=True, wipe=False, duration=1.0, num_incr=10)
+                self._build_eigen('Post Gravity')
+                done, duration, num_incr = self._build_uniform_excitation()
+                if done:
+                    self._build_monitors()
+                    self._build_analysis('Dynamic Analysis', 'Transient', load_const=True, wipe=True, duration=duration, num_incr=num_incr)
             self._build_finalization()
         except Exception as e:
             raise
@@ -124,15 +121,15 @@ class builder:
     # builds a graph of connected vertices
     def _make_vertex_groups(self) -> List[List[int]]:
         # the number of vertices
-        num_vertices = len(self.etabs_doc.vertices)
+        num_vertices = len(self.midas_doc.vertices)
         # create the graph and compute connected vertices
         the_graph = graph(num_vertices)
         def _add_ele_to_graph(ele):
             for i,j in itertools.combinations(ele.nodes, 2):
                 the_graph.add_edge(i, j)
-        for _, ele in self.etabs_doc.frames.items():
+        for _, ele in self.midas_doc.frames.items():
             _add_ele_to_graph(ele)
-        for _, ele in self.etabs_doc.areas.items():
+        for _, ele in self.midas_doc.areas.items():
             _add_ele_to_graph(ele)
         # done
         return the_graph.connected_components()
@@ -149,7 +146,7 @@ class builder:
         for group in vertex_groups:
             # if the group has only one vertex, make it in an external geometry
             if len(group) == 1:
-                geom_floating_nodes.vertices[group[0]] = self.etabs_doc.vertices[group[0]]
+                geom_floating_nodes.vertices[group[0]] = self.midas_doc.vertices[group[0]]
                 continue
             # create a new geometry for the group
             geom = _geometry()
@@ -157,14 +154,14 @@ class builder:
             next_geom_id += 1
             # add the vertices to the geometry
             for node_id in group:
-                geom.vertices[node_id] = self.etabs_doc.vertices[node_id]
+                geom.vertices[node_id] = self.midas_doc.vertices[node_id]
             # now add the frames and areas to the geometry
-            for ele_id, ele in self.etabs_doc.frames.items():
+            for ele_id, ele in self.midas_doc.frames.items():
                 for node_id in ele.nodes:
                     if node_id in group:
                         geom.frames[ele_id] = ele
                         break
-            for ele_id, ele in self.etabs_doc.areas.items():
+            for ele_id, ele in self.midas_doc.areas.items():
                 for node_id in ele.nodes:
                     if node_id in group:
                         geom.areas[ele_id] = ele
@@ -191,12 +188,12 @@ class builder:
     def _build_geometries(self):
         for geom_id, geom in self._geoms.items():
             # build vertices:
-            # map the ETABS node id to the STKO vertex object
+            # map the MIDAS node id to the STKO vertex object
             V : Dict[int, FxOccShape] = {}
             for i, v in geom.vertices.items():
                 V[i] = FxOccBuilder.makeVertex(v)
             # build frames:
-            # map the ETABS frame id to the STKO edge object
+            # map the MIDAS frame id to the STKO edge object
             # also map the tuple of vertices to the STKO a the edge object (assume no overlapping edges!)
             # (will be used to obtain boundary edges for faces)
             # keep track of edges that are not connected to faces!
@@ -209,7 +206,7 @@ class builder:
                 E[i] = edge
                 EN[tuple(sorted((n1, n2)))] = i
             # build areas
-            # map the ETABS area id to the STKO face object
+            # map the MIDAS area id to the STKO face object
             EF : List[int] = [] # list of indices in E, that are also in faces
             EFN : Dict[Tuple[int, int], FxOccShape] = {} # maps a edge_key to an edge object generated for areas (not share with frames)
             F : Dict[int, FxOccShape] = {}
@@ -305,12 +302,12 @@ class builder:
             self.stko.add_geometry(stko_geom)
             self._make_map(stko_geom)
 
-    # maps an ETABS _geometry to an STKO MpcGeometry (called by _build_geometries)
+    # maps an MIDAS _geometry to an STKO MpcGeometry (called by _build_geometries)
     def _make_map(self, geom : MpcGeometry):
         import time
         time_start = time.time()
         # map vertices
-        tol = self.etabs_doc.tolerance
+        tol = self.midas_doc.tolerance
         def _vertex_key(v:Math.vec3) -> Tuple[int,int,int]:
             return (int(v.x/tol), int(v.y/tol), int(v.z/tol))
         unique_vertices : Dict[Tuple[int,int,int], int] = {}
@@ -342,37 +339,37 @@ class builder:
                 p2 = geom.shape.vertexPosition(edge_vertices[1])
                 ekeys.append(_edge_key(unique_vertices[_vertex_key(p1)], unique_vertices[_vertex_key(p2)]))
             unique_faces[_face_key(ekeys)] = i
-        # now we can map the ETABS entities to the STKO geometry/sub-geometry ids
-        # using the ETABS entities in this geometry group
-        etabs_geom = self._geoms[geom.id]
+        # now we can map the MIDAS entities to the STKO geometry/sub-geometry ids
+        # using the MIDAS entities in this geometry group
+        midas_geom = self._geoms[geom.id]
         # link the vertices to the STKO geometry
-        for i, v in etabs_geom.vertices.items():
+        for i, v in midas_geom.vertices.items():
             key = _vertex_key(v)
             subshape_id = unique_vertices.get(key, None)
             if subshape_id is None:
                 raise Exception(f'Vertex {i} not found in geometry {geom.id}')
             self._vertex_map[i] = _geometry_map_item(geom, subshape_id)
         # link the frames to the STKO geometry
-        for i, f in etabs_geom.frames.items():
+        for i, f in midas_geom.frames.items():
             # get the edge id from the map
             edge_vertices = f.nodes
-            p1 = etabs_geom.vertices[edge_vertices[0]]
-            p2 = etabs_geom.vertices[edge_vertices[1]]
+            p1 = midas_geom.vertices[edge_vertices[0]]
+            p2 = midas_geom.vertices[edge_vertices[1]]
             key = _edge_key(unique_vertices[_vertex_key(p1)], unique_vertices[_vertex_key(p2)])
             subshape_id = unique_edges.get(key, None)
             if subshape_id is None:
                 raise Exception(f'Frame {i} not found in geometry {geom.id}')
             self._frame_map[i] = _geometry_map_item(geom, subshape_id)
         # link the areas to the STKO geometry
-        for i, a in etabs_geom.areas.items():
+        for i, a in midas_geom.areas.items():
             # get the face id from the map
             face_vertices = a.nodes
             ekeys : List[Tuple[int,int]] = []
             for j in range(len(face_vertices)):
                 n1 = a.nodes[j]
                 n2 = a.nodes[(j+1)%len(a.nodes)]
-                p1 = etabs_geom.vertices[n1]
-                p2 = etabs_geom.vertices[n2]
+                p1 = midas_geom.vertices[n1]
+                p2 = midas_geom.vertices[n2]
                 key = _edge_key(unique_vertices[_vertex_key(p1)], unique_vertices[_vertex_key(p2)])
                 ekeys.append(key)
             subshape_id = unique_faces.get(_face_key(ekeys), None)
@@ -384,7 +381,7 @@ class builder:
     def _build_interactions(self):
         next_id = self.stko.new_interaction_id()
         # process diaphragms
-        for name, items in self.etabs_doc.diaphragms.items():
+        for name, items in self.midas_doc.diaphragms.items():
             # get data
             retained_id = items[-1]
             constrained_ids = items[:-1]
@@ -464,9 +461,9 @@ class builder:
         area_to_locax_id_map : Dict[int, int] = {}
 
         # define local axes for frames as per ETABS
-        for i, f in self.etabs_doc.frames.items():
-            p1 = self.etabs_doc.vertices[f.nodes[0]]
-            p2 = self.etabs_doc.vertices[f.nodes[1]]
+        for i, f in self.midas_doc.frames.items():
+            p1 = self.midas_doc.vertices[f.nodes[0]]
+            p2 = self.midas_doc.vertices[f.nodes[1]]
             # first axis always alligned to the frame
             dx = (p2 - p1).normalized()
             # obtain trial dy as per ETABS convention
@@ -522,18 +519,18 @@ class builder:
             frame_to_locax_id_map[i] = locax_id
         
         # define local axes for areas as per ETABS
-        for i, a in self.etabs_doc.areas.items():
+        for i, a in self.midas_doc.areas.items():
             # find the normal to the area
             # compute trial local x
-            p1 = self.etabs_doc.vertices[a.nodes[0]]
-            p2 = self.etabs_doc.vertices[a.nodes[1]]
+            p1 = self.midas_doc.vertices[a.nodes[0]]
+            p2 = self.midas_doc.vertices[a.nodes[1]]
             dx = (p2 - p1).normalized()
             # try the first point not aligned with dx
             # it may be a general polygon (aligned sides) but assumed as a plane,
             # so there should be at least 3 points that form a plane
             dz = None
             for j in range(2, len(a.nodes)):
-                p3 = self.etabs_doc.vertices[a.nodes[j]]
+                p3 = self.midas_doc.vertices[a.nodes[j]]
                 dy = (p3 - p1).normalized()
                 _dz = dx.cross(dy).normalized()
                 if _dz.norm() > 0.0:
@@ -567,7 +564,7 @@ class builder:
         # now generate local axes in STKO
         for (x,y,_), id in locax_id_map.items():
             # create the local axis object
-            p1 = self.etabs_doc.bbox.minPoint - (self.etabs_doc.bbox.maxPoint - self.etabs_doc.bbox.minPoint).norm()*0.1*Math.vec3(1,1,1)
+            p1 = self.midas_doc.bbox.minPoint - (self.midas_doc.bbox.maxPoint - self.midas_doc.bbox.minPoint).norm()*0.1*Math.vec3(1,1,1)
             p2 = p1 + Math.vec3(float(x[0])*tol, float(x[1])*tol, float(x[2])*tol)
             p3 = p1 + Math.vec3(float(y[0])*tol, float(y[1])*tol, float(y[2])*tol)
             locax = MpcLocalAxes(id, f'Local Axes {id}', MpcLocalAxesType.Rectangular, p1, p2, p3)
@@ -597,7 +594,7 @@ class builder:
     # builds uniaxial or nd materials in STKO (TODO: make generic material in STKO professional)
     # from the ETABS material properties
     def _build_elastic_materials(self):
-        for name, mat in self.etabs_doc.elastic_materials.items():
+        for name, mat in self.midas_doc.elastic_materials.items():
             # generate the uniaxial material
             prop = MpcProperty()
             prop.id = self.stko.new_physical_property_id()
@@ -647,9 +644,9 @@ class builder:
             _shearK_map[shearK] = prop
             return prop
 
-        for name, section in self.etabs_doc.thicknesses.items():
+        for name, section in self.midas_doc.thicknesses.items():
             # obtain the material
-            mat = self.etabs_doc.elastic_materials.get(section.material, None)
+            mat = self.midas_doc.elastic_materials.get(section.material, None)
             # generate the area section
             if section.conversion_info is not None:
                 if section.conversion_info['type'] == 'MVLEM':
@@ -691,7 +688,7 @@ class builder:
     # assignes the area sections to the areas in STKO
     def _assign_area_sections(self):
         asd_shell = None
-        for area_mat_name, area_ids in self.etabs_doc.area_sections_assignment.items():
+        for area_mat_name, area_ids in self.midas_doc.area_sections_assignment.items():
             # get the phsyical property id
             prop = self._area_property_map.get(area_mat_name, None)
             if prop is None:
@@ -721,9 +718,9 @@ class builder:
 
     # builds the frame sections in STKO
     def _build_frame_sections(self):
-        for name, section in self.etabs_doc.sections.items():
+        for name, section in self.midas_doc.sections.items():
             # obtain the material
-            mat = self.etabs_doc.elastic_materials.get(section.material, None)
+            mat = self.midas_doc.elastic_materials.get(section.material, None)
             # generate the frame section
             prop = MpcProperty()
             prop.id = self.stko.new_physical_property_id()
@@ -747,13 +744,13 @@ class builder:
                 LY, LZ = section.shape_info[:]
                 stko_section = MpcBeamSection(
                     MpcBeamSectionShapeType.Rectangular,
-                    'section_Box', 'user', self.etabs_doc.units[1],
+                    'section_Box', 'user', self.midas_doc.units[1],
                     [LZ, LY],
                 )
             else:
                 stko_section = MpcBeamSection(
                     MpcBeamSectionShapeType.Custom,
-                    'section_Custom', 'user', self.etabs_doc.units[1],
+                    'section_Custom', 'user', self.midas_doc.units[1],
                     [section.A, section.Iyy, section.Izz, section.J, section.Sy, section.Sz],
                 )
             # set the section
@@ -767,7 +764,7 @@ class builder:
 
     # build the frame nonlinear hinges in STKO
     def _build_frame_nonlinear_hinges(self):
-        for name, hinge in self.etabs_doc.frame_nonlinear_hinges.items():
+        for name, hinge in self.midas_doc.frame_nonlinear_hinges.items():
             # generate the property
             prop = MpcProperty()
             prop.id = self.stko.new_physical_property_id()
@@ -776,7 +773,7 @@ class builder:
             xobj = MpcXObject.createInstanceOf(meta)
             # common properties
             if hinge.D[0] == 0.0:
-                hinge.D[0] = hinge.F[0] / self.etabs_doc.penalty_hinges
+                hinge.D[0] = hinge.F[0] / self.midas_doc.penalty
             xobj.getAttribute('ep').quantityVector.value = hinge.D
             xobj.getAttribute('sp').quantityVector.value = hinge.F
             # set the xobject
@@ -791,7 +788,7 @@ class builder:
         prop.name = 'Frame Hinge Elastic Vz Material'
         meta = self.stko.doc.metaDataPhysicalProperty('materials.uniaxial.Elastic')
         xobj = MpcXObject.createInstanceOf(meta)
-        xobj.getAttribute('E').quantityScalar.value = self.etabs_doc.penalty_hinges
+        xobj.getAttribute('E').quantityScalar.value = self.midas_doc.penalty
         prop.XObject = xobj
         self.stko.add_physical_property(prop)
         prop.commitXObjectChanges()
@@ -815,9 +812,9 @@ class builder:
                 prop.name = 'Elastic Beam Element'
                 meta = self.stko.doc.metaDataElementProperty('beam_column_elements.elasticBeamColumn')
                 xobj = MpcXObject.createInstanceOf(meta)
-                if self.etabs_doc.kinematics == 'P-Delta':
+                if self.midas_doc.kinematics == 'P-Delta':
                     xobj.getAttribute('transfType').string = 'PDelta'
-                elif self.etabs_doc.kinematics == 'Large Displacements':
+                elif self.midas_doc.kinematics == 'Large Displacements':
                     xobj.getAttribute('transfType').string = 'Corotational'
                 prop.XObject = xobj
                 self.stko.add_element_property(prop)
@@ -839,16 +836,16 @@ class builder:
                 beam_elements[1] = prop
             return beam_elements[1]
         # process each frame element
-        for frame_id, frame in self.etabs_doc.frames.items():
+        for frame_id, frame in self.midas_doc.frames.items():
             # get the elastic section (skip if not found)
-            section_name = self.etabs_doc.frame_sections_assignment_inverse.get(frame_id, None)
+            section_name = self.midas_doc.frame_sections_assignment_inverse.get(frame_id, None)
             if section_name is None:
                 continue
             section_prop = self._frame_section_map.get(section_name, None)
             if section_prop is None:
                 raise Exception(f'Frame section {section_name} not found in STKO')
             # get the hinge if available
-            hinge_name = self.etabs_doc.frame_nonlinear_hinges_assignment_inverse.get(frame_id, None)
+            hinge_name = self.midas_doc.frame_nonlinear_hinges_assignment_inverse.get(frame_id, None)
             # geometry and subshape id
             frame_data = self._frame_map.get(frame_id, None)
             if frame_data is None:
@@ -875,7 +872,7 @@ class builder:
                     xobj.getAttribute('Beam Property').index = section_prop.id
                     xobj.getAttribute('Vy Material').index = hinge_prop.id
                     xobj.getAttribute('Vz Material').index = self._frame_nonlinear_stiff_mat.id
-                    xobj.getAttribute('K').real = self.etabs_doc.penalty_hinges
+                    xobj.getAttribute('K').real = self.midas_doc.penalty
                     prop.XObject = xobj
                     self.stko.add_physical_property(prop)
                     prop.commitXObjectChanges()
@@ -891,7 +888,7 @@ class builder:
         # group restraints by type
         # key = tuple(int * 6), value = list of vertex ids
         restraints : DefaultDict[Tuple[int,int,int,int,int,int], List[int]] = DefaultDict(list)
-        for i, r in self.etabs_doc.constraints.items():
+        for i, r in self.midas_doc.constraints.items():
             restraints[r].append(i)
         # process each group of restraints
         for rtype, asn_nodes in restraints.items():
@@ -931,7 +928,7 @@ class builder:
     def _build_conditions_diaphragms(self):
         # group restraints by type
         # key = tuple(int * 6), value = list of vertex ids
-        for name, _ in self.etabs_doc.diaphragms.items():
+        for name, _ in self.midas_doc.diaphragms.items():
             # create a new condition
             condition = MpcCondition()
             condition.id = self.stko.new_condition_id()
@@ -957,7 +954,7 @@ class builder:
         # group loads by load pattern in the joint_load object
         # key = load pattern name, value = dict of node_id : joint loads
         pattern_loads : DefaultDict[str, Dict[int, nodal_load]] = defaultdict(dict)
-        for node_id, load in self.etabs_doc.joint_loads.items():
+        for node_id, load in self.midas_doc.joint_loads.items():
             # add the joint load to the group
             pattern_loads[load.load_pattern][node_id] = load
         # process each pattern load list and group them by load value
@@ -1005,7 +1002,7 @@ class builder:
         # (group nodes with same mass, but before split translational and rotational)
         tmass_node_map : DefaultDict[Tuple[float, float, float], List[int]] = defaultdict(list)
         rmass_node_map : DefaultDict[Tuple[float, float, float], List[int]] = defaultdict(list) 
-        for node_id, mass in self.etabs_doc.joint_masses.items():
+        for node_id, mass in self.midas_doc.joint_masses.items():
             if mass.mass_xy > 0.0 or mass.mass_z > 0.0:
                 tmass = (mass.mass_xy, mass.mass_xy, mass.mass_z)
                 tmass_node_map[tmass].append(node_id)
@@ -1055,7 +1052,7 @@ class builder:
         self._linear_time_series_id = definition.id
 
         # 2. time histories in etabs as path time series definitions in stko
-        for name, th in self.etabs_doc.th_functions.items():
+        for name, th in self.midas_doc.th_functions.items():
             # create a new definition
             definition = MpcDefinition()
             definition.id = self.stko.new_definition_id()
@@ -1097,7 +1094,7 @@ class builder:
         # define xobject
         meta = self.stko.doc.metaDataAnalysisStep('Recorders.MPCORecorder')
         xobj = MpcXObject.createInstanceOf(meta)
-        xobj.getAttribute('name').string = f'{self.etabs_doc.name}.mpco'
+        xobj.getAttribute('name').string = f'{self.midas_doc.name}.mpco'
         xobj.getAttribute('displacement').boolean = True
         xobj.getAttribute('rotation').boolean = True
         xobj.getAttribute('reactionForce').boolean = True
@@ -1131,9 +1128,9 @@ class builder:
     # build an analysis step : load patterns
     def _build_analysis_step_load_patterns(self):
         # process all patterns in the static load cases
-        for lc_name, lc in self.etabs_doc.load_cases_static.items():
+        for lc_name, lc in self.midas_doc.load_cases_static.items():
             for name, pattern_factor in lc.load_patterns:
-                pattern = self.etabs_doc.load_patterns.get(name, None)
+                pattern = self.midas_doc.load_patterns.get(name, None)
                 if pattern is None:
                     raise Exception(f'Load pattern {name} not found in ETABS document')
                 # create a new analysis step
@@ -1175,7 +1172,7 @@ class builder:
         xobj.getAttribute('-maxDim/KrylovNewton').boolean = True
         xobj.getAttribute('maxDim/KrylovNewton').integer = 40
         xobj.getAttribute('testCommand').string = 'Norm Displacement Increment Test'
-        xobj.getAttribute('tol/NormDispIncr').real = unit_system.L(1.0e-5, 'm', self.etabs_doc.units[1]) 
+        xobj.getAttribute('tol/NormDispIncr').real = unit_system.L(1.0e-5, 'm', self.midas_doc.units[1]) 
         xobj.getAttribute('iter/NormDispIncr').integer = 20
         xobj.getAttribute('Time Step Type').string = 'Adaptive Time Step'
         xobj.getAttribute('numIncr').integer = num_incr
@@ -1204,7 +1201,7 @@ class builder:
     def _build_eigen(self, name : str):
         # define num_modes based on the mode4_ratio in the load case dynamic
         num_modes = 6
-        for _, lc in self.etabs_doc.load_cases_dynamic.items():
+        for _, lc in self.midas_doc.load_cases_dynamic.items():
             if lc.mode4_ratio > num_modes:
                 num_modes = lc.mode4_ratio
         # create a new analysis step
@@ -1357,10 +1354,10 @@ rayleigh $CM 0.0 $CK 0.0
         # try the top-most node in the rigid diaphragms
         control_geom_info = None
         zmax = -float('inf')
-        for name, items in self.etabs_doc.diaphragms.items():
+        for name, items in self.midas_doc.diaphragms.items():
             if len(items) > 0:
                 retained_id = items[-1]
-                retained_z = self.etabs_doc.vertices[retained_id].z
+                retained_z = self.midas_doc.vertices[retained_id].z
                 if retained_z > zmax:
                     zmax = retained_z
                     # get the geometry and subshape id
@@ -1373,7 +1370,7 @@ rayleigh $CM 0.0 $CK 0.0
             return
         # get all information about the reaction nodes at restraints
         reaction_geom_info : List[_geometry_map_item] = []
-        for i, _ in self.etabs_doc.constraints.items():
+        for i, _ in self.midas_doc.constraints.items():
             # get the geometry and subshape id
             vertex_data = self._vertex_map.get(i, None)
             if vertex_data is None:
@@ -1437,8 +1434,8 @@ rayleigh $CM 0.0 $CK 0.0
                     xobj.getAttribute('Operation/Y').string = 'Sum'
                     xobj.getAttribute('ScaleFactor/Y').real = -1.0
                     # labels
-                    xobj.getAttribute('XLabelAppend').string = f'[{self.etabs_doc.units[1]}]'
-                    xobj.getAttribute('YLabelAppend').string = f'[{self.etabs_doc.units[0]}]'
+                    xobj.getAttribute('XLabelAppend').string = f'[{self.midas_doc.units[1]}]'
+                    xobj.getAttribute('YLabelAppend').string = f'[{self.midas_doc.units[0]}]'
                 else:
                     # plot-x (time)
                     xobj.getAttribute('Type/X').string = 'Pseudo Time'
@@ -1450,7 +1447,7 @@ rayleigh $CM 0.0 $CK 0.0
                     xobj.getAttribute('Operation/Y').string = 'Average'
                     # labels
                     xobj.getAttribute('XLabelAppend').string = 's'
-                    xobj.getAttribute('YLabelAppend').string = f'[{self.etabs_doc.units[1]}/s^2]'
+                    xobj.getAttribute('YLabelAppend').string = f'[{self.midas_doc.units[1]}/s^2]'
                 # set xobj
                 monitor.XObject = xobj
                 # add the analysis step to the document
@@ -1468,24 +1465,24 @@ rayleigh $CM 0.0 $CK 0.0
         # now we ask the user what to choose for the uniform excitation.
         '''
         # quick return if no time histories are defined
-        if len(self.etabs_doc.load_cases_dynamic) == 0:
+        if len(self.midas_doc.load_cases_dynamic) == 0:
             return False, 0.0, 0
         # if there are more than 1 time histories defined,
         # gather information and let the user choose which one to use.
         index = 0
-        if len(self.etabs_doc.load_cases_dynamic) > 1:
+        if len(self.midas_doc.load_cases_dynamic) > 1:
             # gather information as a list of string.
             # each one has:
             # name, duration, AMax (one for each comp), ProBy
             # we will use this to let the user choose which one to use.
             info = []
-            for _, lc in self.etabs_doc.load_cases_dynamic.items():
+            for _, lc in self.midas_doc.load_cases_dynamic.items():
                 dt = lc.step_size
                 duration = dt * lc.num_steps
                 lc_info = f'{lc.name} - Step: {dt:.3f}s, Duration: {duration:.3f}s, ProBy: {lc.pro_by}'
                 for function, direction, scale in lc.functions:
                     # get the time history
-                    th = self.etabs_doc.th_functions.get(function, None)
+                    th = self.midas_doc.th_functions.get(function, None)
                     if th is None:
                         raise Exception(f'Time history {function} not found in ETABS document')
                     # get the max value
@@ -1499,11 +1496,11 @@ rayleigh $CM 0.0 $CK 0.0
                 info,
                 default_index=0,
             )
-            if index < 0 or index >= len(self.etabs_doc.load_cases_dynamic):
+            if index < 0 or index >= len(self.midas_doc.load_cases_dynamic):
                 # user cancelled
                 return False, 0.0, 0
         # get the selected load case
-        lc = list(self.etabs_doc.load_cases_dynamic.values())[index]
+        lc = list(self.midas_doc.load_cases_dynamic.values())[index]
         # get duration and increments for the result
         dt = lc.step_size
         duration = dt * lc.num_steps
@@ -1511,7 +1508,7 @@ rayleigh $CM 0.0 $CK 0.0
         # create the uniform excitations (one for each item in lc.functions)
         for function, direction, scale in lc.functions:
             # get the time history
-            th = self.etabs_doc.th_functions.get(function, None)
+            th = self.midas_doc.th_functions.get(function, None)
             if th is None:
                 raise Exception(f'Time history {function} not found in ETABS document')
             # create a analysis step
