@@ -88,8 +88,8 @@ class builder:
             self.stko.start()
             self._build_geometry_groups()
             self._build_geometries()
+            self._build_interactions()
             if False:
-                self._build_interactions()
                 self._build_local_axes()
                 self._build_definitions()
                 self._build_elastic_materials()
@@ -379,20 +379,59 @@ class builder:
         
     # adds interactions to STKO
     def _build_interactions(self):
+        # first, build a new compound geometry to hold the retained vertices of the diaphragms
+        # created on-the-fly here
+        all_retained_nodes = [] # for each diap, contains a vertex for the retained node
+        all_retained_pos : Dict[str, Math.vec3] = {} # for each diap, contains the position of the retained node
+        all_retained_ids : Dict[str, int] = {} # for each diap, contains the id of the retained vertex in the compound geometry
+        all_constrained_ids : Dict[str, List[int]] = {} # for each diap, contains the ids of the constrained vertices
+        for name, diap in self.midas_doc.diaphragms.items():
+            # elevaltion of the diaphragm
+            diap.Z
+            # find all vertices with the same elevation excluding the ones in the released vertices
+            slave_ids = [i for i,v in self.midas_doc.vertices.items() if abs(v.z - diap.Z) < self.midas_doc.tolerance and i not in self.midas_doc.diaphragm_released_vertices]
+            all_constrained_ids[name] = slave_ids
+            # find the retained vertex position as the average of the constrained vertices
+            if len(slave_ids) == 0:
+                raise Exception(f'Diaphragm {name} has no constrained vertices at elevation {diap.Z}')
+            center = Math.vec3(0.0, 0.0, 0.0)
+            for i in slave_ids:
+                v = self._vertex_map.get(i, None)
+                if v is None:
+                    raise Exception(f'Diaphragm {name} constrained vertex {i} not found in geometry')
+                center += v.geom.shape.vertexPosition(v.subshape_id)
+            center /= len(slave_ids)
+            all_retained_pos[name] = center
+            all_retained_nodes.append(FxOccBuilder.makeVertex(center))
+        # create the compound geometry for the retained nodes
+        retained_geom = MpcGeometry(self.stko.new_geometry_id(), 'Diaphragm Retained Nodes', FxOccBuilder.makeCompound(all_retained_nodes))
+        self.stko.add_geometry(retained_geom)
+        # re-obtain the master vertex ids in the compound geometry
+        for name, diap_retained_pos in all_retained_pos.items():
+            retained_vertex_index = None
+            for i in range(retained_geom.shape.getNumberOfSubshapes(MpcSubshapeType.Vertex)):
+                v = retained_geom.shape.vertexPosition(i)
+                if (v - diap_retained_pos).norm() < self.midas_doc.tolerance:
+                    retained_vertex_index = i
+                    break
+            if retained_vertex_index is None:
+                raise Exception(f'Diaphragm {diap.name} retained vertex not found in geometry')
+            all_retained_ids[name] = retained_vertex_index
+        # next interaction id in STKO
         next_id = self.stko.new_interaction_id()
         # process diaphragms
-        for name, items in self.midas_doc.diaphragms.items():
-            # get data
-            retained_id = items[-1]
-            constrained_ids = items[:-1]
+        for name, diap in self.midas_doc.diaphragms.items():
+            # elevaltion of the diaphragm
+            diap.Z
+            # find all vertices with the same elevation excluding the ones in the released vertices
+            constrained_ids = all_constrained_ids[name]
+            # find the master vertex id
+            retained_id = all_retained_ids[name]
             # make a new interaction
             interaction = MpcInteraction(next_id, f'Diaphragm {name}')
             next_id += 1
             # retained item
-            retained_data = self._vertex_map.get(retained_id, None)
-            if retained_data is None:
-                raise Exception(f'Diagram {name} retained vertex {retained_id} not found in geometry')
-            interaction.items.masters.append(MpcInteractionItem(retained_data.geom, MpcSubshapeType.Vertex, retained_data.subshape_id))
+            interaction.items.masters.append(MpcInteractionItem(retained_geom, MpcSubshapeType.Vertex, retained_id))
             # constrained items
             for i in constrained_ids:
                 constrained_data = self._vertex_map.get(i, None)
