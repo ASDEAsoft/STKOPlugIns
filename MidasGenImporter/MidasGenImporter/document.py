@@ -440,10 +440,11 @@ class document:
             for fl, nodes in lc.floor_loads.items():
                 new_nodes = [old_to_new[n] for n in nodes]
                 lc.floor_loads[fl] = new_nodes
-
-
-        # TODO: merge also masses
-        
+        # nodal masses, vertex ids are in the value
+        _masses = {k:v for k,v in self.masses.items()}
+        self.masses = defaultdict(list)
+        for k,v in _masses.items():
+            self.masses[k] = [old_to_new[i] for i in v]        
         # get the final number of vertices
         num_vertices_final = len(self.vertices)
         print(f'Merged {num_merged} vertices, from {num_vertices} to {num_vertices_final} within tolerance {self.tolerance:.3g}')
