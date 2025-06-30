@@ -349,7 +349,7 @@ class document:
         self.bbox = FxBndBox()
         self.tolerance = 1.0e-6
         # penalty value for the model
-        self.penalty_hinges = 1.0e12
+        self.penalty = 1.0e12
 
     # return the string representation of the document
     def __str__(self):
@@ -454,31 +454,23 @@ class document:
         # penalty for hinge frame elements
         # to be used in hinge properties with rigid-plastic behavior
         Kmax = 0.0
-        for frame_id, frame in self.frames.items():
-            section_name = self.frame_sections_assignment_inverse.get(frame_id, None)
-            if section_name is None:
+        for _, frame in self.frames.items():
+            section = self.sections.get(frame.sec, None)
+            if section is None:
                 continue
-            section = self.sections[section_name]
-            material = self.elastic_materials.get(section.material, None)
+            material = self.elastic_materials.get(frame.mat, None)
             if material is None:
                 continue
-            E = material.E1
-            G = material.G12
-            A = section.A
-            Iyy = section.Iyy
-            Izz = section.Izz
+            E = material.E
+            A = section.area
             p1 = self.vertices[frame.nodes[0]]
             p2 = self.vertices[frame.nodes[1]]
             L = (p2-p1).norm()
-            Kaxial = E*A/L # the axial stiffness that relates the axial force to the axial displacement
-            Kv2 = 12*E*Iyy/L**3 # the deflection stiffness that relates the shear force to the deflection
-            Kv3 = 12*E*Izz/L**3 # the deflection stiffness that relates the shear force to the deflection
-            Km2 = 4*E*Iyy/L # the moment stiffness that relates the moment to the rotation
-            Km3 = 4*E*Izz/L # the moment stiffness that relates the moment to the rotation
-            Kmax = max(Kmax, Kaxial, Kv2, Kv3, Km2, Km3)
+            Kaxial = E*A/L
+            Kmax = max(Kmax, Kaxial)
         # penalty for hinge frame elements
         if Kmax == 0.0:
             Kmax = 1.0
-        self.penalty_hinges = 10.0 ** (math.ceil(math.log10(Kmax)) + 2)
-        if self.penalty_hinges == 0.0:
-            self.penalty_hinges = 1.0e12
+        self.penalty = 10.0 ** (math.ceil(math.log10(Kmax)) + 2)
+        if self.penalty == 0.0:
+            self.penalty = 1.0e12
