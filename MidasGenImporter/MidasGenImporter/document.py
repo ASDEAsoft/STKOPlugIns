@@ -326,11 +326,11 @@ class document:
         # groups of nodes and elements
         self.groups : Dict[str, group] = {} 
         # The elastic materials dictionary is used to store the properties of the elastic materials
-        self.elastic_materials : Dict[str, elastic_material] = {}
+        self.elastic_materials : Dict[int, elastic_material] = {}
         # The frame section dictionary is used to store the properties of the frame materials
-        self.sections : Dict[str, section] = {}
+        self.sections : Dict[int, section] = {}
         # The thickness dictionary is used to store the properties of the area cross sections
-        self.thicknesses : Dict[str, thickness] = {}
+        self.thicknesses : Dict[int, thickness] = {}
         # The section scale factors list is used to store the scale factors for the sections
         self.section_scale_factors : List[section_scale_factors] = []
         # The thickness scale factors list is used to store the scale factors for the thicknesses
