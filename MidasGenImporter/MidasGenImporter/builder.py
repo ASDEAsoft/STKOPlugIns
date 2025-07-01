@@ -460,7 +460,7 @@ class builder:
         - STKO and MIDAS defaults are the same
         '''
         # tolerance for normalized axis components
-        tol = 1.0e-4
+        tol = 1.0e-3
 
         # utilities for reversing subgeoms
         def _check_reverse_subshape(stype:MpcSubshapeType, midas_id:int, axis:Math.vec3):
@@ -504,7 +504,10 @@ class builder:
         # the key is a tuple of integers obtained as the rounded values of the axis components
         locax_id_map : Dict[Tuple[Tuple[int,int,int], Tuple[int,int,int], Tuple[int,int,int]], int] = {}
         def _make_key(x:Math.vec3, y:Math.vec3, z:Math.vec3) -> Tuple[Tuple[int,int,int], Tuple[int,int,int], Tuple[int,int,int]]:
-            return (tuple(int(v/tol) for v in x), tuple(int(v/tol) for v in y), tuple(int(v/tol) for v in z))
+            return (
+                tuple(int(round(v/tol)) for v in x), 
+                tuple(int(round(v/tol)) for v in y), 
+                tuple(int(round(v/tol)) for v in z))
         # maps the local axis id to the local axis object in STKO
         locax_map : Dict[int, MpcLocalAxes] = {}
         # maps a frame to the local axis id
