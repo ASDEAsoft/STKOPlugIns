@@ -1,4 +1,3 @@
- TODO: default local axes for vertical frame in MGT is z' = X while in STKO y' ? -Y   
     *UNIT    ; Unit System
     *STRUCTYPE    ; Structure Type
     *NODE    ; Nodes
@@ -33,4 +32,4 @@
 
 *LOADCOMB    ; Combinations
 
-
+WARNING: some rlink are superimposed to frames!

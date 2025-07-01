@@ -2,7 +2,7 @@ from MidasGenImporter.document import *
 from MidasGenImporter.stko_interface import stko_interface
 from MidasGenImporter.units_utils import unit_system
 from MidasGenImporter.section_utils import get_section_offset_and_area
-from MidasGenImporter.localaxes_utils import STKOLocalAxesConvention, MIDASLocalAxesConvention
+from MidasGenImporter.localaxes_utils import MIDASLocalAxesConvention
 from collections import defaultdict
 import os
 import math
@@ -281,6 +281,10 @@ class parser:
         RIGID:
         ; iNO, iNODE1, iNODE2, LINK, ANGLE, bSHEAR, DRy, DRz, GROUP
         '''
+
+        # if we have fully rigid elastic links overlapping with frames, we need to remove the frames
+        frames_to_remove = []
+
         # get the largest frame ID to assign the elastic links
         id = max(self.doc.frames.keys(), default=0) + 1  # start from the next ID
         for item in self.commands['*ELASTICLINK']:
@@ -317,10 +321,29 @@ class parser:
             elastic_link = frame(0, 0, [node1, node2], angle, link=link)
             # add it to the document
             self.doc.frames[id] = elastic_link
+            # check overlapping with existing frames
+            for old_frame_id, old_frame in self.doc.frames.items():
+                if old_frame.link is None: # if old frame is not a link...
+                    if (old_frame.nodes[0] == node1 and old_frame.nodes[1] == node2) or (old_frame.nodes[0] == node2 and old_frame.nodes[1] == node1):
+                        # overlapping with an existing frame, make sure it is fully rigid
+                        if not all(elastic_link.link.rigid_flags):
+                            raise Exception(f'Elastic link {id} is not fully rigid ({elastic_link.link.rigid_flags}), but it overlaps with frame {old_frame_id} which is elastic')
+                        # add the frame to the list to remove
+                        frames_to_remove.append(old_frame_id)
             # increment the ID for the next elastic link
             id += 1
         if self.interface is not None:
             self.interface.send_message(f'Parsed {len(self.doc.frames)} elastic links', mtype=stko_interface.message_type.INFO)
+        # if we have frames to remove, we need to remove them from the document
+        if len(frames_to_remove) > 0:
+            if self.interface is not None:
+                self.interface.send_message(f'Removing {len(frames_to_remove)} frames that overlap with fully rigid elastic links', mtype=stko_interface.message_type.WARNING)
+            # remove the frames from the document
+            for frame_id in frames_to_remove:
+                del self.doc.frames[frame_id]
+            # remove the frame ids from the section_scale_factors
+            for section_sf in self.doc.section_scale_factors:
+                section_sf.elements = [elem for elem in section_sf.elements if elem not in frames_to_remove]
 
     # this function parses the groups and adds them to the document
     def _parse_groups(self):

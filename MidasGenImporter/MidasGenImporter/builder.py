@@ -3,6 +3,7 @@ from MidasGenImporter.graph import graph
 from MidasGenImporter.document import *
 from MidasGenImporter.stko_interface import stko_interface
 from MidasGenImporter.units_utils import unit_system
+from MidasGenImporter.localaxes_utils import MIDASLocalAxesConvention
 import itertools
 from typing import List, Dict, Tuple, DefaultDict, Union
 import math
@@ -89,8 +90,8 @@ class builder:
             self._build_geometry_groups()
             self._build_geometries()
             self._build_interactions()
+            self._build_local_axes()
             if False:
-                self._build_local_axes()
                 self._build_definitions()
                 self._build_elastic_materials()
                 self._build_area_sections()
@@ -444,46 +445,58 @@ class builder:
             self._diaphram_map[name] = _interaction_map_item(interaction)
 
     # builds the local axes and assign them to frame and area geometries in STKO to match
-    # either the default or the user defined local axes in ETABS
+    # either the default or the user defined local axes in MIDAS
     def _build_local_axes(self):
         '''
         Frames:
         - STKO defaults:
             - vertical elements: local_y ~= -global_y (0,-1,0)
             - others: local_z ~= global_z (0,0,1)
-        - ETABS defaults:
+        - MIDAS defaults:
             - vertical elements: local_y ~= global_x (1,0,0)
+                                 local_z ~= global_x (1,0,0)
             - others: local_y ~= global_z (0,0,1)
         Areas:
-        - STKO and ETABS defaults are the same
+        - STKO and MIDAS defaults are the same
         '''
         # tolerance for normalized axis components
-        tol = 1.0e-3
+        tol = 1.0e-4
 
         # utilities for reversing subgeoms
-        def _check_reverse_subshape(stype:MpcSubshapeType, etabs_id:int, axis:Math.vec3):
+        def _check_reverse_subshape(stype:MpcSubshapeType, midas_id:int, axis:Math.vec3):
             # compare to geom
             stko_dz = Math.vec3()
             stko_dx = Math.vec3()
             stko_dy = Math.vec3()
             if stype == MpcSubshapeType.Edge:
-                edge_data = self._frame_map.get(etabs_id, None)
+                edge_data = self._frame_map.get(midas_id, None)
                 if edge_data is None:
-                    raise Exception(f'Frame {etabs_id} not found in geometry')
+                    raise Exception(f'Frame {midas_id} not found in geometry')
                 edge_data.geom.getLocalAxesOnEdge(edge_data.subshape_id, 0.0, stko_dx, stko_dy, stko_dz)
                 if axis.dot(stko_dx) < 0.0:
-                    print(f'Edge {etabs_id} has inconsistent orientation with the local axes. Reversing it...')
+                    #print(f'Edge {midas_id} has inconsistent orientation with the local axes. Reversing it...')
+                    if edge_data.geom.id == 1 and edge_data.subshape_id == 2077:
+                        print('reversing edge 2077 in geometry 1 from midas_id {} ({})'.format(midas_id, stype))
                     edge_data.geom.shape.toggleEdgeReversedFlag(edge_data.subshape_id)
             elif stype == MpcSubshapeType.Face:
-                area_data = self._area_map.get(etabs_id, None)
+                area_data = self._area_map.get(midas_id, None)
                 if area_data is None:
-                    raise Exception(f'Area {etabs_id} not found in geometry')
+                    raise Exception(f'Area {midas_id} not found in geometry')
                 area_data.geom.getLocalAxesOnFace(area_data.subshape_id, 0.0, 0.0, stko_dx, stko_dy, stko_dz)
                 if axis.dot(stko_dz) < 0.0:
-                    print(f'Area {etabs_id} has inconsistent orientation with the local axes. Reversing it...')
+                    #print(f'Area {midas_id} has inconsistent orientation with the local axes. Reversing it...')
                     area_data.geom.shape.toggleFaceReversedFlag(area_data.subshape_id)
             else:
                 raise Exception(f'Unsupported subshape type {stype}')
+
+        # first, we need to reverse sub-edges and sub-faces in STKO if their director
+        # does not match the director from the source frame or area in MIDAS.
+        for midas_id, elem in self.midas_doc.frames.items():
+            dx = MIDASLocalAxesConvention.get_director([self.midas_doc.vertices[i] for i in elem.nodes])
+            _check_reverse_subshape(MpcSubshapeType.Edge, midas_id, dx)
+        for midas_id, elem in self.midas_doc.areas.items():
+            dz = MIDASLocalAxesConvention.get_director([self.midas_doc.vertices[i] for i in elem.nodes])
+            _check_reverse_subshape(MpcSubshapeType.Face, midas_id, dz)
 
         # next local axes id in STKO
         next_locax_id = self.stko.new_local_axes_id()
@@ -499,109 +512,74 @@ class builder:
         # maps an area to the local axis id
         area_to_locax_id_map : Dict[int, int] = {}
 
-        # define local axes for frames as per ETABS
-        for i, f in self.midas_doc.frames.items():
-            p1 = self.midas_doc.vertices[f.nodes[0]]
-            p2 = self.midas_doc.vertices[f.nodes[1]]
-            # first axis always alligned to the frame
-            dx = (p2 - p1).normalized()
-            # obtain trial dy as per ETABS convention
-            dy = Math.vec3(1,0,0) if abs(dx.z) >= 1.0-tol else Math.vec3(0,0,1)
-            # compute dz by right hand rule
-            dz = dx.cross(dy).normalized()
-            # make dy orhtogonal to dx and dz
-            dy = dz.cross(dx).normalized()
-            # check if the subshape is reversed in STKO
-            _check_reverse_subshape(MpcSubshapeType.Edge, i, dx)
-            # rotate if user angle is defined
-            if abs(f.angle) > 1.0e-10:
-                q = Math.quaternion.fromAxisAngle(dx, f.angle/180.0*math.pi)
-                dy = q.rotate(dy)
-                dz = q.rotate(dz)
-                # generate ad hoc local axis reference using ETABS local axis
-                GX, GY, GZ = dx, dy, dz
-            else:
-                # generate local axis reference using default ETABS local axis
-                if(abs(dx.z) >= 1.0-tol):
-                    # vertical element
-                    # define a rectangular local axis object with dy = X+ (opposite for dx = -Z?)
-                    GY = Math.vec3(1.0, 0.0, 0.0)
-                    GZ = Math.vec3(0.0, 0.0, 1.0)
-                    GX = Math.vec3(0.0,-1.0, 0.0)
-                else:
-                    # GY should point to the global Z axis 
-                    GY = Math.vec3(0.0, 0.0, 1.0)
-                    if abs(dx.x) < tol:
-                        # aligned with global Y axis (enforce local Y = global Y+)
-                        if dx.y > 0.0:
-                            GZ = Math.vec3(1.0, 0.0, 0.0)
-                            GX = Math.vec3(0.0, 1.0, 0.0)
-                        else:
-                            GZ = Math.vec3(-1.0, 0.0, 0.0)
-                            GX = Math.vec3(0.0, -1.0, 0.0)
-                    else:
-                        # aligned with X or skew in XY plane projection
-                        # (enforce local Y = global Y+)
-                        if dx.x > 0.0:
-                            GZ = Math.vec3(0.0,-1.0, 0.0)
-                            GX = Math.vec3(1.0, 0.0, 0.0)
-                        else:
-                            GZ = Math.vec3(0.0, 1.0, 0.0)
-                            GX = Math.vec3(-1.0, 0.0, 0.0)
-            # map it
-            locax_key = _make_key(GX, GY, GZ)
-            locax_id = locax_id_map.get(locax_key, None)
-            if locax_id is None:
-                locax_id = next_locax_id
-                locax_id_map[locax_key] = next_locax_id
-                next_locax_id += 1
-            frame_to_locax_id_map[i] = locax_id
-        
-        # define local axes for areas as per ETABS
-        for i, a in self.midas_doc.areas.items():
-            # find the normal to the area
-            # compute trial local x
-            p1 = self.midas_doc.vertices[a.nodes[0]]
-            p2 = self.midas_doc.vertices[a.nodes[1]]
-            dx = (p2 - p1).normalized()
-            # try the first point not aligned with dx
-            # it may be a general polygon (aligned sides) but assumed as a plane,
-            # so there should be at least 3 points that form a plane
-            dz = None
-            for j in range(2, len(a.nodes)):
-                p3 = self.midas_doc.vertices[a.nodes[j]]
-                dy = (p3 - p1).normalized()
-                _dz = dx.cross(dy).normalized()
-                if _dz.norm() > 0.0:
-                    dz = _dz
-                    break
-            if dz is None:
-                raise Exception(f'Cannot find plane in Area {i}')
-            # set default
-            if abs(dz.z) >= 1.0-tol:
-                dy = Math.vec3(0,1,0)
-            else:
-                dy = Math.vec3(0,0,1)
-            # make dx orthogonal to dy and dz
-            dx = dy.cross(dz).normalized()
-            # check if the subshape is reversed in STKO
-            _check_reverse_subshape(MpcSubshapeType.Face, i, dz)
-            # rotate if user define angle is defined
-            if abs(a.angle) > 1.0e-10:
-                q = Math.quaternion.fromAxisAngle(dz, a.angle/180.0*math.pi)
-                dx = q.rotate(dx)
-                dy = q.rotate(dy)
-                # map it (only if angle is defined, because the default should be the same as in STKO)
+        # define local axes for frames as per MIDAS
+        stko_dx = Math.vec3()
+        stko_dy = Math.vec3()
+        stko_dz = Math.vec3()
+        for midas_id, elem in self.midas_doc.frames.items():
+            # get local axes from MIDAS defaults
+            T_midas = MIDASLocalAxesConvention.get_local_axes([self.midas_doc.vertices[i] for i in elem.nodes])
+            # rotate about the local x if user angle is defined
+            dx = T_midas.col(0)
+            dy = T_midas.col(1)
+            dz = T_midas.col(2)
+            if abs(elem.angle) > 1.0e-10:
+                q = Math.quaternion.fromAxisAngle(dx, elem.angle/180.0*math.pi)
+                dy = q.rotate(dy).normalized()
+                dz = q.rotate(dz).normalized()
+            # get the default from STKO
+            area_data = self._frame_map[midas_id]
+            area_data.geom.getLocalAxesOnEdge(area_data.subshape_id, 0.0, stko_dx, stko_dy, stko_dz)
+            # check similarity
+            if stko_dx.dot(dx) < 0.99:
+                raise Exception(f'Frame {midas_id} has inconsistent local axes with the MIDAS defaults. Please check the frame orientation in MIDAS.')
+            # now we are sure the main axis is aligned with the frame
+            # next step: if the local y (or z) is not aligned with the one from STKO's defaults,
+            # we need to make a local axis object in STKO
+            if dy.dot(stko_dy) < 0.99:
+                # map the frame to the local axis
                 locax_key = _make_key(dx, dy, dz)
                 locax_id = locax_id_map.get(locax_key, None)
                 if locax_id is None:
                     locax_id = next_locax_id
                     locax_id_map[locax_key] = next_locax_id
                     next_locax_id += 1
-                area_to_locax_id_map[i] = locax_id
+                frame_to_locax_id_map[midas_id] = locax_id
+
+        # define local axes for areas as per MIDAS
+        for midas_id, elem in self.midas_doc.areas.items():
+            # get local axes from MIDAS defaults
+            T_midas = MIDASLocalAxesConvention.get_local_axes([self.midas_doc.vertices[i] for i in elem.nodes])
+            # rotate about the local z if user angle is defined
+            dx = T_midas.col(0)
+            dy = T_midas.col(1)
+            dz = T_midas.col(2)
+            if abs(elem.angle) > 1.0e-10:
+                q = Math.quaternion.fromAxisAngle(dz, elem.angle/180.0*math.pi)
+                dy = q.rotate(dy).normalized()
+                dx = q.rotate(dx).normalized()
+            # get the default from STKO
+            area_data = self._area_map[midas_id]
+            area_data.geom.getLocalAxesOnFace(area_data.subshape_id, 0.0, 0.0, stko_dx, stko_dy, stko_dz)
+            # check similarity
+            if stko_dz.dot(dz) < 0.99:
+                raise Exception(f'Area {midas_id} has inconsistent local axes with the MIDAS defaults. Please check the frame orientation in MIDAS.')
+            # now we are sure the main axis is aligned with the area normal
+            # next step: if the local y (or zx) is not aligned with the one from STKO's defaults,
+            # we need to make a local axis object in STKO
+            if dy.dot(stko_dy) < 0.99:
+                # map the frame to the local axis
+                locax_key = _make_key(dx, dy, dz)
+                locax_id = locax_id_map.get(locax_key, None)
+                if locax_id is None:
+                    locax_id = next_locax_id
+                    locax_id_map[locax_key] = next_locax_id
+                    next_locax_id += 1
+                area_to_locax_id_map[midas_id] = locax_id
         
         # now generate local axes in STKO
         for (x,y,_), id in locax_id_map.items():
+            print(x, y)
             # create the local axis object
             p1 = self.midas_doc.bbox.minPoint - (self.midas_doc.bbox.maxPoint - self.midas_doc.bbox.minPoint).norm()*0.1*Math.vec3(1,1,1)
             p2 = p1 + Math.vec3(float(x[0])*tol, float(x[1])*tol, float(x[2])*tol)
