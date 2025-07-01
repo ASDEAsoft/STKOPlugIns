@@ -92,11 +92,12 @@ class builder:
             self._build_interactions()
             self._build_local_axes()
             self._build_definitions()
+            self._build_frame_sections()
             if False:
                 self._build_elastic_materials()
                 self._build_area_sections()
                 self._assign_area_sections()
-                self._build_frame_sections()
+                
                 self._build_frame_nonlinear_hinges()
                 self._assign_frame_sections()
                 self._build_conditions_restraints()
@@ -582,7 +583,6 @@ class builder:
         
         # now generate local axes in STKO
         for (x,y,_), id in locax_id_map.items():
-            print(x, y)
             # create the local axis object
             p1 = self.midas_doc.bbox.minPoint - (self.midas_doc.bbox.maxPoint - self.midas_doc.bbox.minPoint).norm()*0.1*Math.vec3(1,1,1)
             p2 = p1 + Math.vec3(float(x[0])*tol, float(x[1])*tol, float(x[2])*tol)
@@ -626,6 +626,95 @@ class builder:
         definition.commitXObjectChanges()
         # track the time series id
         self._linear_time_series_id = definition.id
+
+    # builds the frame sections in STKO
+    def _build_frame_sections(self):
+        '''
+        In midas elements have 1) a material for E and v, 2) a section and 3) section modifiers.
+        For each frame, we have to compute combinations of material + section + modifiers
+        '''
+
+        # map frame to the index in the section modifier list
+        map_frame_mod : Dict[int, int] = {}
+        for mod_id, mod in enumerate(self.midas_doc.section_scale_factors):
+            for ele_id in mod.elements:
+                map_frame_mod[ele_id] = mod_id
+
+        # for each frame that is not a link, we need to create a key = tuple(material, section, modifier)
+        map_sec_ele : DefaultDict[Tuple[int, int, int], List[int]] = defaultdict(list)
+        for frame_id, frame in self.midas_doc.frames.items():
+            # skip links
+            if frame.link is not None:
+                continue 
+            # get material and section
+            mat = frame.mat
+            sec = frame.sec
+            mod = map_frame_mod.get(frame_id, -1)
+            key = (mat, sec, mod)
+            # add the frame to the map
+            map_sec_ele[key].append(frame_id)
+
+        # now we can build the sections
+        for (mat_id, sec_id, mod_id), frame_ids in map_sec_ele.items():
+            # get the material
+            mat = self.midas_doc.elastic_materials.get(mat_id, None)
+            if mat is None:
+                raise Exception(f'Material {mat_id} not found for frame section with material {mat_id}, section {sec_id}, modifier {mod_id}')
+            # get the section
+            sec = self.midas_doc.sections.get(sec_id, None)
+            if sec is None:
+                raise Exception(f'Section {sec_id} not found for frame section with material {mat_id}, section {sec_id}, modifier {mod_id}')
+            # get the modifier
+            mod = self.midas_doc.section_scale_factors[mod_id] if mod_id >= 0 else None
+            # generate the frame section
+            prop = MpcProperty()
+            prop.id = self.stko.new_physical_property_id()
+            prop.name = f'Frame Section {mat.name} - {sec.name} - Modifier {mod_id if mod else "None"}'
+            meta = self.stko.doc.metaDataPhysicalProperty('sections.Elastic')
+            xobj = MpcXObject.createInstanceOf(meta)
+            # common properties
+            xobj.getAttribute('E').quantityScalar.value = mat.E
+            xobj.getAttribute('G').quantityScalar.value = mat.E/(2*(1+mat.poiss))
+            if mod is not None:
+                xobj.getAttribute('A_modifier').real = max(1.0e-3, mod.A)
+                xobj.getAttribute('Asy_modifier').real = max(1.0e-3, mod.Asy)
+                xobj.getAttribute('Asz_modifier').real = max(1.0e-3, mod.Asz)
+                xobj.getAttribute('Iyy_modifier').real = max(1.0e-3, mod.Iyy)
+                xobj.getAttribute('Izz_modifier').real = max(1.0e-3, mod.Izz)
+                xobj.getAttribute('J_modifier').real = max(1.0e-3, mod.Ixx)
+            xobj.getAttribute('Y/section_offset').quantityScalar.value = sec.offset_y
+            xobj.getAttribute('Z/section_offset').quantityScalar.value = sec.offset_z
+            xobj.getAttribute('Shear Deformable').boolean = True # make it shear
+            # define the section
+            if sec.type == section.shape_type.SB:
+                H, B = sec.shape_info[:2]
+                stko_section = MpcBeamSection(
+                    MpcBeamSectionShapeType.Rectangular,
+                    'section_Box', 'user', self.midas_doc.units[1].lower(),
+                    [H, B]
+                )
+            elif sec.type == section.shape_type.L:
+                H, B, tw, tf = sec.shape_info[:4]
+                stko_section = MpcBeamSection(
+                    MpcBeamSectionShapeType.LU,
+                    'section_L_U', 'user', self.midas_doc.units[1].lower(),
+                    [H, B, tw, tf]
+                )
+            elif sec.type == section.shape_type.T:
+                H, B, tw, tf = sec.shape_info[:4]
+                stko_section = MpcBeamSection(
+                    MpcBeamSectionShapeType.T,
+                    'section_T', 'user', self.midas_doc.units[1].lower(),
+                    [H, B, tw, tf]
+                )
+            else:
+                raise Exception(f'Unsupported section type {sec.type} for frame section with material {mat_id}, section {sec_id}, modifier {mod_id}')
+            # set the section
+            xobj.getAttribute('Section').customObject = stko_section
+            # set the xobject
+            prop.XObject = xobj
+            self.stko.add_physical_property(prop)
+            prop.commitXObjectChanges()
 
 
 
@@ -755,51 +844,7 @@ class builder:
                     # assign the element property to the area geometry
                     area_data.geom.assign(asd_shell, area_data.subshape_id, MpcSubshapeType.Face)
 
-    # builds the frame sections in STKO
-    def _build_frame_sections(self):
-        for name, section in self.midas_doc.sections.items():
-            # obtain the material
-            mat = self.midas_doc.elastic_materials.get(section.material, None)
-            # generate the frame section
-            prop = MpcProperty()
-            prop.id = self.stko.new_physical_property_id()
-            prop.name = f'Frame Section {name}'
-            meta = self.stko.doc.metaDataPhysicalProperty('sections.Elastic')
-            xobj = MpcXObject.createInstanceOf(meta)
-            # common properties
-            xobj.getAttribute('E').quantityScalar.value = mat.E1 if mat else 0.0
-            xobj.getAttribute('G').quantityScalar.value = mat.G12 if mat else 0.0
-            xobj.getAttribute('A_modifier').real = max(1.0e-3, section.AMod)
-            xobj.getAttribute('Asy_modifier').real = max(1.0e-3, section.AsyMod)
-            xobj.getAttribute('Asz_modifier').real = max(1.0e-3, section.AszMod)
-            xobj.getAttribute('Iyy_modifier').real = max(1.0e-3, section.IyyMod)
-            xobj.getAttribute('Izz_modifier').real = max(1.0e-3, section.IzzMod)
-            xobj.getAttribute('J_modifier').real = max(1.0e-3, section.JMod)
-            xobj.getAttribute('Y/section_offset').quantityScalar.value = section.Oy
-            xobj.getAttribute('Z/section_offset').quantityScalar.value = section.Oz
-            xobj.getAttribute('Shear Deformable').boolean = True # make it shear deformable
-            # define the section
-            if section.shape == section.shape_type.rectangle:
-                LY, LZ = section.shape_info[:]
-                stko_section = MpcBeamSection(
-                    MpcBeamSectionShapeType.Rectangular,
-                    'section_Box', 'user', self.midas_doc.units[1],
-                    [LZ, LY],
-                )
-            else:
-                stko_section = MpcBeamSection(
-                    MpcBeamSectionShapeType.Custom,
-                    'section_Custom', 'user', self.midas_doc.units[1],
-                    [section.A, section.Iyy, section.Izz, section.J, section.Sy, section.Sz],
-                )
-            # set the section
-            xobj.getAttribute('Section').customObject = stko_section
-            # set the xobject
-            prop.XObject = xobj
-            self.stko.add_physical_property(prop)
-            prop.commitXObjectChanges()
-            # add the section to the map
-            self._frame_section_map[name] = prop
+    
 
     # build the frame nonlinear hinges in STKO
     def _build_frame_nonlinear_hinges(self):
