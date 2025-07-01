@@ -497,6 +497,7 @@ class parser:
         *ELEM-SRF    ; Element Stiffness Scale Factor
         ; ELEM_LIST,  AREA_SF, ASY_SF, ASZ_SF, IXX_SF, IYY_SF, IZZ_SF, WGT_SF, GROUP, iPart
         '''
+        map_mod_to_ele : DefaultDict[Tuple[float,float,float,float,float,float], List[int]] = defaultdict(list)
         for item in self.commands['*ELEM-SRF']:
             words = _split_line(item, skip_empty=False)
             if len(words) < 9:
@@ -512,6 +513,10 @@ class parser:
             wgt_sf = float(words[7])  # weight scale factor, not supported
             if wgt_sf != 1.0 and self.interface is not None:
                 self.interface.send_message(f'[ELEM-SRF]: Weight scale factor {wgt_sf} is not supported, ignoring it', mtype=stko_interface.message_type.ERROR)
+            # map it so that we don't have multiple section scale factors with the same values
+            map_mod_to_ele[(area_sf, asy_sf, asz_sf, ixx_sf, iyy_sf, izz_sf)].extend(elem_list)
+        # create section scale factors objects from unique values
+        for (area_sf, asy_sf, asz_sf, ixx_sf, iyy_sf, izz_sf), elem_list in map_mod_to_ele.items():
             # create a section scale factor object
             section_sf = section_scale_factors(area_sf, asy_sf, asz_sf, ixx_sf, iyy_sf, izz_sf, elements=elem_list)
             self.doc.section_scale_factors.append(section_sf)

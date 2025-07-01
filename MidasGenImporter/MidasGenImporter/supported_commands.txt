@@ -32,4 +32,6 @@
 
 *LOADCOMB    ; Combinations
 
-WARNING: some rlink are superimposed to frames!
+merge modifiers
+assign section
+check thickness offsets

@@ -634,11 +634,22 @@ class builder:
         For each frame, we have to compute combinations of material + section + modifiers
         '''
 
+        # create 1 element property for all frames
+        ele_prop = MpcElementProperty()
+        ele_prop.id = self.stko.new_element_property_id()
+        ele_prop.name = 'Elastic Beam Element'
+        meta = self.stko.doc.metaDataElementProperty('beam_column_elements.elasticBeamColumn')
+        xobj = MpcXObject.createInstanceOf(meta)
+        ele_prop.XObject = xobj
+        self.stko.add_element_property(ele_prop)
+        ele_prop.commitXObjectChanges()
+
         # map frame to the index in the section modifier list
         map_frame_mod : Dict[int, int] = {}
         for mod_id, mod in enumerate(self.midas_doc.section_scale_factors):
             for ele_id in mod.elements:
                 map_frame_mod[ele_id] = mod_id
+        print_mod = len(map_frame_mod) > 1
 
         # for each frame that is not a link, we need to create a key = tuple(material, section, modifier)
         map_sec_ele : DefaultDict[Tuple[int, int, int], List[int]] = defaultdict(list)
@@ -669,7 +680,10 @@ class builder:
             # generate the frame section
             prop = MpcProperty()
             prop.id = self.stko.new_physical_property_id()
-            prop.name = f'Frame Section {mat.name} - {sec.name} - Modifier {mod_id if mod else "None"}'
+            if print_mod:
+                prop.name = f'Frame Section {mat.name} - {sec.name} - Modifier {mod_id if mod else "None"}'
+            else:
+                prop.name = f'Frame Section {mat.name} - {sec.name}'
             meta = self.stko.doc.metaDataPhysicalProperty('sections.Elastic')
             xobj = MpcXObject.createInstanceOf(meta)
             # common properties
@@ -716,6 +730,16 @@ class builder:
             self.stko.add_physical_property(prop)
             prop.commitXObjectChanges()
 
+            # now we can assign this section to all target frames
+            for frame_id in frame_ids:
+                # get the geometry and subshape id
+                frame_data = self._frame_map.get(frame_id, None)
+                if frame_data is None:
+                    raise Exception(f'Frame {frame_id} not found in geometry')
+                # assign the section to the frame
+                frame_data.geom.assign(prop, frame_data.subshape_id, MpcSubshapeType.Edge)
+                # assign also the element property
+                frame_data.geom.assign(ele_prop, frame_data.subshape_id, MpcSubshapeType.Edge)
 
 
 
