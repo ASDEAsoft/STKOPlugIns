@@ -91,8 +91,8 @@ class builder:
             self._build_geometries()
             self._build_interactions()
             self._build_local_axes()
+            self._build_definitions()
             if False:
-                self._build_definitions()
                 self._build_elastic_materials()
                 self._build_area_sections()
                 self._assign_area_sections()
@@ -611,6 +611,25 @@ class builder:
             # set the local axes id
             area_data.geom.assign(locax_map[locax_id], area_data.subshape_id, MpcSubshapeType.Face)
 
+    # build definitions
+    def _build_definitions(self):
+        # 1. The default linear time series
+        definition = MpcDefinition()
+        definition.id = self.stko.new_definition_id()
+        definition.name = 'Linear Time Series'
+        # define xobject
+        meta = self.stko.doc.metaDataDefinition('timeSeries.Linear')
+        xobj = MpcXObject.createInstanceOf(meta)
+        definition.XObject = xobj
+        # add the definition to the document
+        self.stko.add_definition(definition)
+        definition.commitXObjectChanges()
+        # track the time series id
+        self._linear_time_series_id = definition.id
+
+
+
+
     # builds uniaxial or nd materials in STKO (TODO: make generic material in STKO professional)
     # from the ETABS material properties
     def _build_elastic_materials(self):
@@ -1054,40 +1073,6 @@ class builder:
                 # add the condition to the document
                 self.stko.add_condition(condition)
                 condition.commitXObjectChanges()
-
-    # build definitions
-    def _build_definitions(self):
-        # 1. The default linear time series
-        definition = MpcDefinition()
-        definition.id = self.stko.new_definition_id()
-        definition.name = 'Linear Time Series'
-        # define xobject
-        meta = self.stko.doc.metaDataDefinition('timeSeries.Linear')
-        xobj = MpcXObject.createInstanceOf(meta)
-        definition.XObject = xobj
-        # add the definition to the document
-        self.stko.add_definition(definition)
-        definition.commitXObjectChanges()
-        # track the time series id
-        self._linear_time_series_id = definition.id
-
-        # 2. time histories in etabs as path time series definitions in stko
-        for name, th in self.midas_doc.th_functions.items():
-            # create a new definition
-            definition = MpcDefinition()
-            definition.id = self.stko.new_definition_id()
-            definition.name = f'Time History {name}'
-            # define xobject
-            meta = self.stko.doc.metaDataDefinition('timeSeries.Path')
-            xobj = MpcXObject.createInstanceOf(meta)
-            xobj.getAttribute('list_of_values').quantityVector.value = th.values
-            xobj.getAttribute('dt').real = th.dt
-            definition.XObject = xobj
-            # add the definition to the document
-            self.stko.add_definition(definition)
-            definition.commitXObjectChanges()
-            # map
-            self._th_ids[name] = definition.id
 
     # mesh the model
     def _build_mesh(self):
