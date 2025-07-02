@@ -88,9 +88,10 @@ class builder:
             self._build_frame_sections()
             self._build_area_sections()
             self._build_conditions_restraints()
+            self._build_conditions_diaphragms()
             if False:
                 
-                self._build_conditions_diaphragms()
+                
                 self._build_conditions_joint_loads()
                 self._build_conditions_joint_masses()
                 self._build_mesh()
@@ -909,34 +910,34 @@ class builder:
             # track the condition id
             self._mp_ids.append(condition.id)
 
-
-
-
-
     # builds the conditions for rigid diaphragms in STKO
     def _build_conditions_diaphragms(self):
-        # group restraints by type
-        # key = tuple(int * 6), value = list of vertex ids
+        # build 1 condition for all diaphragms
+        condition = MpcCondition()
+        condition.id = self.stko.new_condition_id()
+        condition.name = f'Diaphragm'
+        # define xobject
+        meta = self.stko.doc.metaDataCondition('Constraints.mp.rigidDiaphragm')
+        xobj = MpcXObject.createInstanceOf(meta)
+        xobj.getAttribute('perpDirn').integer = 3
+        condition.XObject = xobj
         for name, _ in self.midas_doc.diaphragms.items():
-            # create a new condition
-            condition = MpcCondition()
-            condition.id = self.stko.new_condition_id()
-            condition.name = f'Diaphragm {name}'
-            # define xobject
-            meta = self.stko.doc.metaDataCondition('Constraints.mp.rigidDiaphragm')
-            xobj = MpcXObject.createInstanceOf(meta)
-            xobj.getAttribute('perpDirn').integer = 3 # default to X-Y plane?
-            condition.XObject = xobj
             # add the assigned interactions to the condition
             interaction = self._diaphram_map.get(name, None)
             if interaction is None:
                 raise Exception(f'Interaction for Diaphragm {name} not found in STKO')
             condition.assignTo(interaction.interaction)
-            # add the condition to the document
-            self.stko.add_condition(condition)
-            condition.commitXObjectChanges()
-            # track the condition id
-            self._mp_ids.append(condition.id)
+         # add the condition to the document
+        self.stko.add_condition(condition)
+        condition.commitXObjectChanges()
+        # track the condition id
+        self._mp_ids.append(condition.id)
+
+
+
+
+
+
 
     # builds the conditions for joint loads in STKO
     def _build_conditions_joint_loads(self):
