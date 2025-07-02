@@ -93,13 +93,8 @@ class builder:
             self._build_local_axes()
             self._build_definitions()
             self._build_frame_sections()
+            self._build_area_sections()
             if False:
-                self._build_elastic_materials()
-                self._build_area_sections()
-                self._assign_area_sections()
-                
-                self._build_frame_nonlinear_hinges()
-                self._assign_frame_sections()
                 self._build_conditions_restraints()
                 self._build_conditions_diaphragms()
                 self._build_conditions_joint_loads()
@@ -653,20 +648,20 @@ class builder:
 
         # for each frame that is not a link, we need to create a key = tuple(material, section, modifier)
         map_sec_ele : DefaultDict[Tuple[int, int, int], List[int]] = defaultdict(list)
-        for frame_id, frame in self.midas_doc.frames.items():
+        for ele_id, ele in self.midas_doc.frames.items():
             # skip links
-            if frame.link is not None:
+            if ele.link is not None:
                 continue 
             # get material and section
-            mat = frame.mat
-            sec = frame.sec
-            mod = map_frame_mod.get(frame_id, -1)
+            mat = ele.mat
+            sec = ele.sec
+            mod = map_frame_mod.get(ele_id, -1)
             key = (mat, sec, mod)
             # add the frame to the map
-            map_sec_ele[key].append(frame_id)
+            map_sec_ele[key].append(ele_id)
 
         # now we can build the sections
-        for (mat_id, sec_id, mod_id), frame_ids in map_sec_ele.items():
+        for (mat_id, sec_id, mod_id), ele_ids in map_sec_ele.items():
             # get the material
             mat = self.midas_doc.elastic_materials.get(mat_id, None)
             if mat is None:
@@ -731,265 +726,97 @@ class builder:
             prop.commitXObjectChanges()
 
             # now we can assign this section to all target frames
-            for frame_id in frame_ids:
+            for ele_id in ele_ids:
                 # get the geometry and subshape id
-                frame_data = self._frame_map.get(frame_id, None)
+                frame_data = self._frame_map.get(ele_id, None)
                 if frame_data is None:
-                    raise Exception(f'Frame {frame_id} not found in geometry')
+                    raise Exception(f'Frame {ele_id} not found in geometry')
                 # assign the section to the frame
                 frame_data.geom.assign(prop, frame_data.subshape_id, MpcSubshapeType.Edge)
                 # assign also the element property
                 frame_data.geom.assign(ele_prop, frame_data.subshape_id, MpcSubshapeType.Edge)
 
-
-
-    # builds uniaxial or nd materials in STKO (TODO: make generic material in STKO professional)
-    # from the ETABS material properties
-    def _build_elastic_materials(self):
-        for name, mat in self.midas_doc.elastic_materials.items():
-            # generate the uniaxial material
-            prop = MpcProperty()
-            prop.id = self.stko.new_physical_property_id()
-            prop.name = f'Elastic Material {name} (1D)'
-            meta = self.stko.doc.metaDataPhysicalProperty('materials.uniaxial.Elastic')
-            xobj = MpcXObject.createInstanceOf(meta)
-            xobj.getAttribute('E').quantityScalar.value = mat.E1
-            prop.XObject = xobj
-            self.stko.add_physical_property(prop)
-            prop.commitXObjectChanges()
-            P1 = prop
-            # generate the nd material
-            prop = MpcProperty()
-            prop.id = self.stko.new_physical_property_id()
-            prop.name = f'Elastic Material {name} (3D)'
-            meta = self.stko.doc.metaDataPhysicalProperty('materials.nD.ElasticIsotropic')
-            xobj = MpcXObject.createInstanceOf(meta)
-            xobj.getAttribute('E').quantityScalar.value = mat.E1
-            xobj.getAttribute('v').real = mat.U12
-            xobj.getAttribute('use_rho').boolean = True
-            xobj.getAttribute('rho').quantityScalar.value = mat.rho
-            prop.XObject = xobj
-            self.stko.add_physical_property(prop)
-            prop.commitXObjectChanges()
-            P2 = prop
-            # add the material to the map
-            self._elastic_material_map[name] = (P1, P2)
-
     # builds the area sections in STKO
     def _build_area_sections(self):
 
-        # keeps track of shearK material for MVLEM
-        _shearK_map : Dict[float, MpcProperty] = {}
-        def _get_shearK_material(shearK:float) -> MpcProperty:
-            if shearK in _shearK_map:
-                return _shearK_map[shearK]
-            # create a new shearK material
+        # create 1 element property for all areas
+        ele_prop = MpcElementProperty()
+        ele_prop.id = self.stko.new_element_property_id()
+        ele_prop.name = 'Elastic Shell Element'
+        meta = self.stko.doc.metaDataElementProperty('shell.ASDShellQ4')
+        xobj = MpcXObject.createInstanceOf(meta)
+        ele_prop.XObject = xobj
+        self.stko.add_element_property(ele_prop)
+        ele_prop.commitXObjectChanges()
+
+        # map areas to the index in the thickness modifier list
+        map_area_mod : Dict[int, int] = {}
+        for mod_id, mod in enumerate(self.midas_doc.thickness_scale_factors):
+            for ele_id in mod.elements:
+                map_area_mod[ele_id] = mod_id
+        print_mod = len(map_area_mod) > 1
+        
+        # for each area we need to create a key = tuple(material, thickness, modifier)
+        map_thick_ele : DefaultDict[Tuple[int, int, int], List[int]] = defaultdict(list)
+        for ele_id, ele in self.midas_doc.areas.items():
+            # get material and section
+            mat = ele.mat
+            sec = ele.sec
+            mod = map_area_mod.get(ele_id, -1)
+            key = (mat, sec, mod)
+            # add the frame to the map
+            map_thick_ele[key].append(ele_id)
+
+        # now we can build the sections
+        for (mat_id, sec_id, mod_id), ele_ids in map_thick_ele.items():
+            # get the material
+            mat = self.midas_doc.elastic_materials.get(mat_id, None)
+            if mat is None:
+                raise Exception(f'Material {mat_id} not found for area section with material {mat_id}, section {sec_id}, modifier {mod_id}')
+            # get the section
+            sec = self.midas_doc.thicknesses.get(sec_id, None)
+            if sec is None:
+                raise Exception(f'Thickness {sec_id} not found for area section with material {mat_id}, section {sec_id}, modifier {mod_id}')
+            # get the modifier
+            mod = self.midas_doc.thickness_scale_factors[mod_id] if mod_id >= 0 else None
+            # now we can compute the stiffnesses of the plate and create a layered shell if there is an offset
+            thickness = sec.in_thick
+            oop_thickness = sec.out_thick
+            if mod is not None:
+                thickness *= mod.ip_mod
+                oop_thickness *= mod.oop_mod
+            oop_scale = oop_thickness / thickness
+            # generate the elastic shell section
             prop = MpcProperty()
             prop.id = self.stko.new_physical_property_id()
-            prop.name = f'MVLEM Shear {shearK}'
-            meta = self.stko.doc.metaDataPhysicalProperty('materials.uniaxial.Elastic')
-            xobj = MpcXObject.createInstanceOf(meta)
-            xobj.getAttribute('E').quantityScalar.value = shearK
-            prop.XObject = xobj
-            self.stko.add_physical_property(prop)
-            prop.commitXObjectChanges()
-            _shearK_map[shearK] = prop
-            return prop
-
-        for name, section in self.midas_doc.thicknesses.items():
-            # obtain the material
-            mat = self.midas_doc.elastic_materials.get(section.material, None)
-            # generate the area section
-            if section.conversion_info is not None:
-                if section.conversion_info['type'] == 'MVLEM':
-                    # do nothing, it requires just an Element Property
-                    prop = MpcElementProperty()
-                    prop.id = self.stko.new_element_property_id()
-                    prop.name = '{} Property {}'.format('Wall' if section.is_wall else 'Slab', name)
-                    meta = self.stko.doc.metaDataElementProperty('beam_column_elements.MVLEM_3D')
-                    xobj = MpcXObject.createInstanceOf(meta)
-                    xobj.getAttribute('m').integer = section.conversion_info['nfibers']
-                    xobj.getAttribute('Thicknesses').quantityVector.value = section.conversion_info['-thick']
-                    xobj.getAttribute('Widths').quantityVector.value = section.conversion_info['-width']
-                    xobj.getAttribute('Reinforcing_ratios').quantityVector.value = section.conversion_info['-rho']
-                    xobj.getAttribute('Concrete_tags').indexVector = [self._nonlinear_material_map[i].id for i in section.conversion_info['-matConcrete']]
-                    xobj.getAttribute('Steel_tags').indexVector = [self._nonlinear_material_map[i].id for i in section.conversion_info['-matSteel']]
-                    xobj.getAttribute('Shear_tag').index = _get_shearK_material(section.conversion_info['-ShearK'][0]).id
-                    prop.XObject = xobj
-                    self.stko.add_element_property(prop)
-                    prop.commitXObjectChanges()
-                    # add the section to the map
-                    self._area_property_map[name] = prop
+            if print_mod:
+                prop.name = f'Area Section {mat.name} - {sec.name} - Modifier {mod_id if mod else "None"}'
             else:
-                prop = MpcProperty()
-                prop.id = self.stko.new_physical_property_id()
-                prop.name = '{} Property {}'.format('Wall' if section.is_wall else 'Slab', name)
-                meta = self.stko.doc.metaDataPhysicalProperty('sections.ElasticMembranePlateSection')
-                xobj = MpcXObject.createInstanceOf(meta)
-                xobj.getAttribute('E').quantityScalar.value = mat.E1 * section.Fmod if mat else 0.0
-                xobj.getAttribute('nu').real = mat.U12 if mat else 0.0
-                xobj.getAttribute('h').quantityScalar.value = section.thickness
-                xobj.getAttribute('rho').quantityScalar.value = mat.rho if mat else 0.0
-                xobj.getAttribute('Ep_mod').real = section.Mmod / section.Fmod
-                prop.XObject = xobj
-                self.stko.add_physical_property(prop)
-                prop.commitXObjectChanges()
-                # add the section to the map
-                self._area_property_map[name] = prop
-    
-    # assignes the area sections to the areas in STKO
-    def _assign_area_sections(self):
-        asd_shell = None
-        for area_mat_name, area_ids in self.midas_doc.area_sections_assignment.items():
-            # get the phsyical property id
-            prop = self._area_property_map.get(area_mat_name, None)
-            if prop is None:
-                raise Exception(f'Area material {area_mat_name} not found in STKO')
-            # assign the property to the areas
-            for area_id in area_ids:
-                # get the geometry and subshape id
-                area_data = self._area_map.get(area_id, None)
-                if area_data is None:
-                    raise Exception(f'Area {area_id} not found in geometry')
-                # assign the property to the geometry
-                area_data.geom.assign(prop, area_data.subshape_id, MpcSubshapeType.Face)
-                # if prop is an MpcProperty, create on the fly a shell element property
-                if type(prop) == MpcProperty:
-                    # create a shell element property
-                    if asd_shell is None:
-                        asd_shell = MpcElementProperty()
-                        asd_shell.id = self.stko.new_element_property_id()
-                        asd_shell.name = f'Shell Element Property {area_mat_name}'
-                        meta = self.stko.doc.metaDataElementProperty('shell.ASDShellQ4')
-                        xobj = MpcXObject.createInstanceOf(meta)
-                        asd_shell.XObject = xobj
-                        self.stko.add_element_property(asd_shell)
-                        asd_shell.commitXObjectChanges()
-                    # assign the element property to the area geometry
-                    area_data.geom.assign(asd_shell, area_data.subshape_id, MpcSubshapeType.Face)
-
-    
-
-    # build the frame nonlinear hinges in STKO
-    def _build_frame_nonlinear_hinges(self):
-        for name, hinge in self.midas_doc.frame_nonlinear_hinges.items():
-            # generate the property
-            prop = MpcProperty()
-            prop.id = self.stko.new_physical_property_id()
-            prop.name = f'Frame Hinge {name}'
-            meta = self.stko.doc.metaDataPhysicalProperty('materials.uniaxial.HystereticSM')
+                prop.name = f'Area Section {mat.name} - {sec.name}'
+            meta = self.stko.doc.metaDataPhysicalProperty('sections.ElasticMembranePlateSection')
             xobj = MpcXObject.createInstanceOf(meta)
             # common properties
-            if hinge.D[0] == 0.0:
-                hinge.D[0] = hinge.F[0] / self.midas_doc.penalty
-            xobj.getAttribute('ep').quantityVector.value = hinge.D
-            xobj.getAttribute('sp').quantityVector.value = hinge.F
+            xobj.getAttribute('E').quantityScalar.value = mat.E
+            xobj.getAttribute('nu').real = mat.poiss
+            xobj.getAttribute('h').quantityScalar.value = thickness
+            xobj.getAttribute('Ep_mod').real = oop_scale
             # set the xobject
             prop.XObject = xobj
             self.stko.add_physical_property(prop)
             prop.commitXObjectChanges()
-            # add the hinge to the map
-            self._frame_nonlinear_hinge_map[name] = prop
-        # now we need an elastic material for the Vz direction of the hinge
-        prop = MpcProperty()
-        prop.id = self.stko.new_physical_property_id()
-        prop.name = 'Frame Hinge Elastic Vz Material'
-        meta = self.stko.doc.metaDataPhysicalProperty('materials.uniaxial.Elastic')
-        xobj = MpcXObject.createInstanceOf(meta)
-        xobj.getAttribute('E').quantityScalar.value = self.midas_doc.penalty
-        prop.XObject = xobj
-        self.stko.add_physical_property(prop)
-        prop.commitXObjectChanges()
-        self._frame_nonlinear_stiff_mat = prop
 
-    # assignes the frame sections and hinges to the frames in STKO
-    def _assign_frame_sections(self):
-        '''
-        Note: if a frame has only elastic properties, we can make an elastic beam element 
-        and assign the elastic section directly to the frame.
-        '''
-        # create a map of tuples (int, int), where the first is the frame section and the second the hinge (that can be none)
-        combined_map : Dict[Tuple[int, int], MpcProperty] = {}
-        # the elastic beam element and the hinged beam (to be created only once)
-        beam_elements : List[MpcElementProperty] = [None, None]
-        def _get_elastic_beam_elem() -> MpcElementProperty:
-            if beam_elements[0] is None:
-                # create the elastic beam element
-                prop = MpcElementProperty()
-                prop.id = self.stko.new_element_property_id()
-                prop.name = 'Elastic Beam Element'
-                meta = self.stko.doc.metaDataElementProperty('beam_column_elements.elasticBeamColumn')
-                xobj = MpcXObject.createInstanceOf(meta)
-                if self.midas_doc.kinematics == 'P-Delta':
-                    xobj.getAttribute('transfType').string = 'PDelta'
-                elif self.midas_doc.kinematics == 'Large Displacements':
-                    xobj.getAttribute('transfType').string = 'Corotational'
-                prop.XObject = xobj
-                self.stko.add_element_property(prop)
-                prop.commitXObjectChanges()
-                beam_elements[0] = prop
-            return beam_elements[0]
-        def _get_hinged_beam_elem() -> MpcElementProperty:
-            if beam_elements[1] is None:
-                # create the hinged beam element
-                prop = MpcElementProperty()
-                prop.id = self.stko.new_element_property_id()
-                prop.name = 'Hinged Beam Element'
-                meta = self.stko.doc.metaDataElementProperty('special_purpose.BeamWithShearHinge')
-                xobj = MpcXObject.createInstanceOf(meta)
-                xobj.getAttribute('Beam Element').index = _get_elastic_beam_elem().id
-                prop.XObject = xobj
-                self.stko.add_element_property(prop)
-                prop.commitXObjectChanges()
-                beam_elements[1] = prop
-            return beam_elements[1]
-        # process each frame element
-        for frame_id, frame in self.midas_doc.frames.items():
-            # get the elastic section (skip if not found)
-            section_name = self.midas_doc.frame_sections_assignment_inverse.get(frame_id, None)
-            if section_name is None:
-                continue
-            section_prop = self._frame_section_map.get(section_name, None)
-            if section_prop is None:
-                raise Exception(f'Frame section {section_name} not found in STKO')
-            # get the hinge if available
-            hinge_name = self.midas_doc.frame_nonlinear_hinges_assignment_inverse.get(frame_id, None)
-            # geometry and subshape id
-            frame_data = self._frame_map.get(frame_id, None)
-            if frame_data is None:
-                raise Exception(f'Frame {frame_id} not found in geometry')
-            # if the hinge is none, use the elastic section
-            if hinge_name is None:
-                # assign the section to the geometry
-                frame_data.geom.assign(section_prop, frame_data.subshape_id, MpcSubshapeType.Edge)
-                frame_data.geom.assign(_get_elastic_beam_elem(), frame_data.subshape_id, MpcSubshapeType.Edge)
-            else:
-                # get the hinge property or create a new one
-                hinge_prop = self._frame_nonlinear_hinge_map.get(hinge_name, None)
-                if hinge_prop is None:
-                    raise Exception(f'Frame hinge {hinge_name} not found in STKO')
-                combined_key = (section_prop.id, hinge_prop.id)
-                combined_prop = combined_map.get(combined_key, None)
-                if combined_prop is None:
-                    # make the combined physical property
-                    prop = MpcProperty()
-                    prop.id = self.stko.new_physical_property_id()
-                    prop.name = f'Frame Section {section_name} + Hinge {hinge_name}'
-                    meta = self.stko.doc.metaDataPhysicalProperty('special_purpose.BeamWithShearHingeProperty')
-                    xobj = MpcXObject.createInstanceOf(meta)
-                    xobj.getAttribute('Beam Property').index = section_prop.id
-                    xobj.getAttribute('Vy Material').index = hinge_prop.id
-                    xobj.getAttribute('Vz Material').index = self._frame_nonlinear_stiff_mat.id
-                    xobj.getAttribute('K').real = self.midas_doc.penalty
-                    prop.XObject = xobj
-                    self.stko.add_physical_property(prop)
-                    prop.commitXObjectChanges()
-                    combined_map[combined_key] = prop
-                    combined_prop = prop
-                # assign the combined property to the geometry
-                frame_data.geom.assign(combined_prop, frame_data.subshape_id, MpcSubshapeType.Edge)
-                # assign the hinged beam element to the geometry
-                frame_data.geom.assign(_get_hinged_beam_elem(), frame_data.subshape_id, MpcSubshapeType.Edge)
+            # now we can assign this section to all target frames
+            for ele_id in ele_ids:
+                # get the geometry and subshape id
+                area_data = self._area_map.get(ele_id, None)
+                if area_data is None:
+                    raise Exception(f'Area {ele_id} not found in geometry')
+                # assign the section to the frame
+                area_data.geom.assign(prop, area_data.subshape_id, MpcSubshapeType.Face)
+                # assign also the element property
+                area_data.geom.assign(ele_prop, area_data.subshape_id, MpcSubshapeType.Face)
+
+
 
     # builds the conditions for restraints in STKO
     def _build_conditions_restraints(self):

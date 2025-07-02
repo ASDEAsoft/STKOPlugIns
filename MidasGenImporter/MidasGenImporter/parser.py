@@ -529,6 +529,7 @@ class parser:
         *WALL-SSRF    ; Wall Stiffness Scale Factor
         ; ELEM_LIST, SHEAR_FACTOR, BENDING_FACTOR, GROUP, AXIAL, OUTTORSION, OUTSHEAR, OUTBENDING
         '''
+        map_mod_to_ele : DefaultDict[Tuple[float,float], List[int]] = defaultdict(list)
         # note: constraint SHEAR_FACTOR = BENDING_FACTOR
         # note: OUTTORSION, OUTSHEAR, OUTBENDING are not supported, must be 1.0
         # TODO: ask nicola if we can use the same scale factors for all walls
@@ -553,7 +554,10 @@ class parser:
             # now consider only in-plane scale and out-of-plane scale factors
             in_plane = axial
             out_of_plane = bending_factor
-            # create a thickness scale factors object
+            # map it so that we don't have multiple section scale factors with the same values
+            map_mod_to_ele[(in_plane, out_of_plane)].extend(elem_list)
+        # create thickness scale factors objects from unique values
+        for (in_plane, out_of_plane), elem_list in map_mod_to_ele.items():
             self.doc.thickness_scale_factors.append(thickness_scale_factors(in_plane, out_of_plane, elements=elem_list))
         '''
         *PLATE-SSRF    ; Plate Stiffness Scale Factor
@@ -584,8 +588,12 @@ class parser:
             # now consider only in-plane scale and out-of-plane scale factors
             in_plane = axial_fxx  # or axial_fyy or shear_fxy
             out_of_plane = bending_mxx  # or bending_myy or torsion_mxy
-            # create a thickness scale factors object
+            # map it so that we don't have multiple section scale factors with the same values
+            map_mod_to_ele[(in_plane, out_of_plane)].extend(elem_list)
+        # create thickness scale factors objects from unique values
+        for (in_plane, out_of_plane), elem_list in map_mod_to_ele.items():
             self.doc.thickness_scale_factors.append(thickness_scale_factors(in_plane, out_of_plane, elements=elem_list))
+        # print
         if self.interface is not None:
             self.interface.send_message(f'Parsed {len(self.doc.thickness_scale_factors)} thickness scale factors', mtype=stko_interface.message_type.INFO)
 
