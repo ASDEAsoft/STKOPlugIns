@@ -11,14 +11,6 @@ from collections import defaultdict
 
 class _globals:
     fix_labels = ('Ux', 'Uy', 'Uz', 'Rx', 'Ry', 'Rz/3D')
-    uniform_excitation_dir_map = {
-        'U1' : 'dx',
-        'U2' : 'dy',
-        'U3' : 'dz',
-        'R1' : 'Rx',
-        'R2' : 'Ry',
-        'R3' : 'Rz',
-    }
 
 # a utility class to store the components of the MIDAS model
 # that will be part of a single geometry in STKO
@@ -64,6 +56,7 @@ class builder:
 
         # the grouped geometries (key = id in STKO)
         self._geoms : Dict[int, _geometry] = {}
+        self._diaphram_retained_nodes_geom : MpcGeometry = None # the geometry for the retained nodes of the diaphragms
 
         # mapping of the MIDAS entities to the STKO entities
         self._vertex_map : Dict[int, _geometry_map_item] = {}
@@ -94,8 +87,9 @@ class builder:
             self._build_definitions()
             self._build_frame_sections()
             self._build_area_sections()
+            self._build_conditions_restraints()
             if False:
-                self._build_conditions_restraints()
+                
                 self._build_conditions_diaphragms()
                 self._build_conditions_joint_loads()
                 self._build_conditions_joint_masses()
@@ -403,6 +397,7 @@ class builder:
         # create the compound geometry for the retained nodes
         retained_geom = MpcGeometry(self.stko.new_geometry_id(), 'Diaphragm Retained Nodes', FxOccBuilder.makeCompound(all_retained_nodes))
         self.stko.add_geometry(retained_geom)
+        self._diaphram_retained_nodes_geom = retained_geom
         # re-obtain the master vertex ids in the compound geometry
         for name, diap_retained_pos in all_retained_pos.items():
             retained_vertex_index = None
@@ -843,21 +838,10 @@ class builder:
             for geom, subshape_ids in geom_sub_map_q4.items():
                 geom.assign(ele_prop_q4, subshape_ids, MpcSubshapeType.Face)
 
-
-
     # builds the conditions for restraints in STKO
     def _build_conditions_restraints(self):
-        # group restraints by type
-        # key = tuple(int * 6), value = list of vertex ids
-        restraints : DefaultDict[Tuple[int,int,int,int,int,int], List[int]] = DefaultDict(list)
-        for i, r in self.midas_doc.constraints.items():
-            restraints[r].append(i)
-        # process each group of restraints
-        for rtype, asn_nodes in restraints.items():
-            # create a new condition
-            condition = MpcCondition()
-            condition.id = self.stko.new_condition_id()
-            condition.name = f'Restraint {rtype}'
+        # utils
+        def _make_xobj_gen():
             # define xobject
             meta = self.stko.doc.metaDataCondition('Constraints.sp.fix')
             xobj = MpcXObject.createInstanceOf(meta)
@@ -868,6 +852,20 @@ class builder:
             xobj.getAttribute('U (Displacement)').boolean = False
             xobj.getAttribute('U-P (Displacement+Pressure)').boolean = False
             xobj.getAttribute('U-R (Displacement+Rotation)').boolean = True
+            return xobj
+        # group restraints by type
+        # key = tuple(int * 6), value = list of vertex ids
+        restraints : DefaultDict[Tuple[int,int,int,int,int,int], List[int]] = DefaultDict(list)
+        for i, r in self.midas_doc.constraints.items():
+            restraints[r].append(i)
+        # process each group of restraints
+        for rtype, asn_nodes in restraints.items():
+            # create a new condition
+            condition = MpcCondition()
+            condition.id = self.stko.new_condition_id()
+            condition.name = f'Fix {rtype}'
+            # define xobject
+            xobj = _make_xobj_gen()
             for dof_flag, dof_label in zip(rtype, _globals.fix_labels):
                 xobj.getAttribute(dof_label).boolean = dof_flag == 1
             condition.XObject = xobj
@@ -885,7 +883,36 @@ class builder:
             condition.commitXObjectChanges()
             # track the condition id
             self._sp_ids.append(condition.id)
-    
+        # fix master nodes for rigid diaphragm
+        if self._diaphram_retained_nodes_geom is not None:
+            # create a new condition for the rigid diaphragm retained nodes
+            condition = MpcCondition()
+            condition.id = self.stko.new_condition_id()
+            condition.name = 'Fix Rigid Diaphragm Retained Nodes'
+            # define xobject
+            meta = self.stko.doc.metaDataCondition('Constraints.mp.rigidDiaphragm')
+            xobj = MpcXObject.createInstanceOf(meta)
+            xobj.getAttribute('perpDirn').integer = 3
+            # define xobject
+            xobj = _make_xobj_gen()
+            for dof_flag, dof_label in zip((0,0,1,1,1,0), _globals.fix_labels):
+                xobj.getAttribute(dof_label).boolean = dof_flag == 1
+            condition.XObject = xobj
+            # add the assigned nodes to the condition
+            for i in range(self._diaphram_retained_nodes_geom.shape.getNumberOfSubshapes(MpcSubshapeType.Vertex)):
+                sset = MpcConditionIndexedSubSet()
+                sset.vertices.append(i)
+                condition.assignTo(self._diaphram_retained_nodes_geom, sset)
+            # add the condition to the document
+            self.stko.add_condition(condition)
+            condition.commitXObjectChanges()
+            # track the condition id
+            self._mp_ids.append(condition.id)
+
+
+
+
+
     # builds the conditions for rigid diaphragms in STKO
     def _build_conditions_diaphragms(self):
         # group restraints by type
