@@ -726,28 +726,41 @@ class builder:
             prop.commitXObjectChanges()
 
             # now we can assign this section to all target frames
+            geom_sub_map : DefaultDict[MpcGeometry, List[int]] = defaultdict(list)
             for ele_id in ele_ids:
                 # get the geometry and subshape id
                 frame_data = self._frame_map.get(ele_id, None)
                 if frame_data is None:
                     raise Exception(f'Frame {ele_id} not found in geometry')
+                geom_sub_map[frame_data.geom].append(frame_data.subshape_id)
+            for geom, subshape_ids in geom_sub_map.items():
                 # assign the section to the frame
-                frame_data.geom.assign(prop, frame_data.subshape_id, MpcSubshapeType.Edge)
+                geom.assign(prop, subshape_ids, MpcSubshapeType.Edge)
                 # assign also the element property
-                frame_data.geom.assign(ele_prop, frame_data.subshape_id, MpcSubshapeType.Edge)
+                geom.assign(ele_prop, subshape_ids, MpcSubshapeType.Edge)
 
     # builds the area sections in STKO
     def _build_area_sections(self):
 
         # create 1 element property for all areas
-        ele_prop = MpcElementProperty()
-        ele_prop.id = self.stko.new_element_property_id()
-        ele_prop.name = 'Elastic Shell Element'
+        ele_prop_q4 = MpcElementProperty()
+        ele_prop_q4.id = self.stko.new_element_property_id()
+        ele_prop_q4.name = 'Elastic Shell Element'
         meta = self.stko.doc.metaDataElementProperty('shell.ASDShellQ4')
         xobj = MpcXObject.createInstanceOf(meta)
-        ele_prop.XObject = xobj
-        self.stko.add_element_property(ele_prop)
-        ele_prop.commitXObjectChanges()
+        ele_prop_q4.XObject = xobj
+        self.stko.add_element_property(ele_prop_q4)
+        ele_prop_q4.commitXObjectChanges()
+
+        # create 1 element property for all areas
+        ele_prop_t3 = MpcElementProperty()
+        ele_prop_t3.id = self.stko.new_element_property_id()
+        ele_prop_t3.name = 'Elastic Shell Element'
+        meta = self.stko.doc.metaDataElementProperty('shell.ASDShellT3')
+        xobj = MpcXObject.createInstanceOf(meta)
+        ele_prop_t3.XObject = xobj
+        self.stko.add_element_property(ele_prop_t3)
+        ele_prop_t3.commitXObjectChanges()
 
         # map areas to the index in the thickness modifier list
         map_area_mod : Dict[int, int] = {}
@@ -777,6 +790,8 @@ class builder:
             sec = self.midas_doc.thicknesses.get(sec_id, None)
             if sec is None:
                 raise Exception(f'Thickness {sec_id} not found for area section with material {mat_id}, section {sec_id}, modifier {mod_id}')
+            if sec.offset != 0.0:
+                raise Exception(f'Thickness {sec_id} has an offset {sec.offset} which is not supported in STKO. Please remove the offset from the thickness in MIDAS.')
             # get the modifier
             mod = self.midas_doc.thickness_scale_factors[mod_id] if mod_id >= 0 else None
             # now we can compute the stiffnesses of the plate and create a layered shell if there is an offset
@@ -806,15 +821,27 @@ class builder:
             prop.commitXObjectChanges()
 
             # now we can assign this section to all target frames
+            geom_sub_map : DefaultDict[MpcGeometry, List[int]] = defaultdict(list)
+            geom_sub_map_t3 : DefaultDict[MpcGeometry, List[int]] = defaultdict(list)
+            geom_sub_map_q4 : DefaultDict[MpcGeometry, List[int]] = defaultdict(list)
             for ele_id in ele_ids:
                 # get the geometry and subshape id
                 area_data = self._area_map.get(ele_id, None)
                 if area_data is None:
                     raise Exception(f'Area {ele_id} not found in geometry')
-                # assign the section to the frame
-                area_data.geom.assign(prop, area_data.subshape_id, MpcSubshapeType.Face)
-                # assign also the element property
-                area_data.geom.assign(ele_prop, area_data.subshape_id, MpcSubshapeType.Face)
+                geom_sub_map[area_data.geom].append(area_data.subshape_id) # for physical property
+                if len(self.midas_doc.areas[ele_id].nodes) == 3:
+                    geom_sub_map_t3[area_data.geom].append(area_data.subshape_id) # for t3 elements
+                else:
+                    geom_sub_map_q4[area_data.geom].append(area_data.subshape_id) # for q4 elements
+            # assign the section to the area
+            for geom, subshape_ids in geom_sub_map.items():
+                geom.assign(prop, subshape_ids, MpcSubshapeType.Face)
+            # assign also the element property
+            for geom, subshape_ids in geom_sub_map_t3.items():
+                geom.assign(ele_prop_t3, subshape_ids, MpcSubshapeType.Face)
+            for geom, subshape_ids in geom_sub_map_q4.items():
+                geom.assign(ele_prop_q4, subshape_ids, MpcSubshapeType.Face)
 
 
 
