@@ -1200,7 +1200,7 @@ class parser:
         for node_id, mass in node_mass.items():
             key = (mass.x, mass.y, mass.z)  # use a tuple as key to avoid duplicates
             self.doc.masses[key].append(node_id)  # add the node ID to the list of nodes for this mass
-        print(f'reduced to {len(self.doc.masses)} grouped nodal masses from densities')
+        print(f'reduced to {len(self.doc.masses)} grouped nodal masses from densities and load-to-mass')
 
 
 

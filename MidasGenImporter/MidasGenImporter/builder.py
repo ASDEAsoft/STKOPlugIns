@@ -89,11 +89,12 @@ class builder:
             self._build_area_sections()
             self._build_conditions_restraints()
             self._build_conditions_diaphragms()
+            self._build_conditions_masses()
             if False:
                 
                 
                 self._build_conditions_joint_loads()
-                self._build_conditions_joint_masses()
+                
                 self._build_mesh()
                 self._build_analysis_step_recorder()
                 self._build_analysis_step_constraint_pattern()
@@ -933,7 +934,38 @@ class builder:
         # track the condition id
         self._mp_ids.append(condition.id)
 
-
+    # builds the conditions for joint masses in STKO
+    def _build_conditions_masses(self):
+        for (mx, my, mz), node_ids in self.midas_doc.masses.items():
+            # create a new condition
+            condition = MpcCondition()
+            condition.id = self.stko.new_condition_id()
+            condition.name = 'Joint Mass {:.2g} {:.2g} {:.2g}'.format(mx, my, mz)
+            # define xobject
+            meta = self.stko.doc.metaDataCondition('Mass.NodeMass')
+            xobj = MpcXObject.createInstanceOf(meta)
+            xobj.getAttribute('mass').quantityVector3.value = Math.vec3(mx, my, mz)
+            condition.XObject = xobj
+            # add the assigned nodes to the condition
+            # group nodes by geometry
+            geom_node_map : DefaultDict[MpcGeometry, List[int]] = defaultdict(list)
+            for i in node_ids:
+                # get the geometry and subshape id
+                vertex_data = self._vertex_map.get(i, None)
+                if vertex_data is None:
+                    raise Exception(f'Vertex {i} not found in geometry')
+                geom_node_map[vertex_data.geom].append(vertex_data.subshape_id)
+            for geom, node_ids in geom_node_map.items():
+                # get the geometry and subshape id
+                vertex_data = self._vertex_map.get(i, None)
+                if vertex_data is None:
+                    raise Exception(f'Vertex {i} not found in geometry')
+                sset = MpcConditionIndexedSubSet()
+                sset.vertices.append(vertex_data.subshape_id)
+                condition.assignTo(vertex_data.geom, sset)
+            # add the condition to the document
+            self.stko.add_condition(condition)
+            condition.commitXObjectChanges()
 
 
 
@@ -986,44 +1018,7 @@ class builder:
                     # track the pattern name to force condition id mapping
                     tracked_loads.append(condition.id)
 
-    # builds the conditions for joint masses in STKO
-    def _build_conditions_joint_masses(self):
-        # process each joint mass list and group them by value 
-        # (group nodes with same mass, but before split translational and rotational)
-        tmass_node_map : DefaultDict[Tuple[float, float, float], List[int]] = defaultdict(list)
-        rmass_node_map : DefaultDict[Tuple[float, float, float], List[int]] = defaultdict(list) 
-        for node_id, mass in self.midas_doc.joint_masses.items():
-            if mass.mass_xy > 0.0 or mass.mass_z > 0.0:
-                tmass = (mass.mass_xy, mass.mass_xy, mass.mass_z)
-                tmass_node_map[tmass].append(node_id)
-            if mass.mmi_x > 0.0 or mass.mmi_y > 0.0 or mass.mmi_z > 0.0:
-                rmass = (mass.mmi_x, mass.mmi_y, mass.mmi_z)
-                rmass_node_map[rmass].append(node_id)
-        # process each mass value and create a condition for it
-        for mass_mapp, meta_name, label in zip((tmass_node_map, rmass_node_map), ('NodeMass', 'NodeRotationalMass'), ('mass', 'mass')):
-            # meta
-            meta = self.stko.doc.metaDataCondition(f'Mass.{meta_name}')
-            for mass, node_ids in mass_mapp.items():
-                # create a new condition
-                condition = MpcCondition()
-                condition.id = self.stko.new_condition_id()
-                condition.name = f'{meta_name} {mass}'
-                # define xobject
-                xobj = MpcXObject.createInstanceOf(meta)
-                xobj.getAttribute(label).quantityVector3.value = Math.vec3(*mass)
-                condition.XObject = xobj
-                # add the assigned nodes to the condition
-                for i in node_ids:
-                    # get the geometry and subshape id
-                    vertex_data = self._vertex_map.get(i, None)
-                    if vertex_data is None:
-                        raise Exception(f'Vertex {i} not found in geometry')
-                    sset = MpcConditionIndexedSubSet()
-                    sset.vertices.append(vertex_data.subshape_id)
-                    condition.assignTo(vertex_data.geom, sset)
-                # add the condition to the document
-                self.stko.add_condition(condition)
-                condition.commitXObjectChanges()
+    
 
     # mesh the model
     def _build_mesh(self):
