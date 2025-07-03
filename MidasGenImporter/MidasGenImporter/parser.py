@@ -855,6 +855,8 @@ class parser:
                     raise Exception('Invalid pressure load direction: {}, expecting 2 characters'.format(direction))
                 is_local = direction[0] == 'L'
                 component = _globals._xyz_to_index.get(direction[1], None)
+                if is_local and component != 2:
+                    raise Exception('Invalid pressure load direction: {}, expecting LZ for local Z direction'.format(direction))
                 if component is None:
                     raise Exception('Invalid pressure load direction component: {}, expecting X, Y or Z'.format(direction[1]))
                 vx = float(words[5])
@@ -876,9 +878,9 @@ class parser:
                     continue  # no pressure load
                 # make the load vector
                 load_vector = (
-                    pu if is_local and component == 0 else 0.0,  # X component
-                    pu if is_local and component == 1 else 0.0,  # Y component
-                    pu if is_local and component == 2 else 0.0,  # Z component
+                    pu if component == 0 else 0.0,  # X component
+                    pu if component == 1 else 0.0,  # Y component
+                    pu if component == 2 else 0.0,  # Z component
                 )
                 # create the pressure load object
                 pressure_load_obj = pressure_load(load_vector, is_local)
@@ -1098,6 +1100,8 @@ class parser:
             for node_id in ele.nodes:
                 node_mass[node_id] += mass
         print(f'Parsed {len(node_mass)} nodal masses from densities')
+        # copy this dict so keep only densities
+        node_mass_dens:Dict[int,float] = {node_id : mass.x for node_id, mass in node_mass.items()}
         # now parse the load to masses
         '''
         *LOADTOMASS    ; Load to Mass
@@ -1197,6 +1201,8 @@ class parser:
                                     node_mass[ele_node] += mass
 
         # merge nodal masses with same value
+        for node_id, mass in node_mass_dens.items():
+            self.doc.masses_dens[mass].append(node_id)  # add the node ID to the list of nodes for this mass
         for node_id, mass in node_mass.items():
             key = (mass.x, mass.y, mass.z)  # use a tuple as key to avoid duplicates
             self.doc.masses[key].append(node_id)  # add the node ID to the list of nodes for this mass

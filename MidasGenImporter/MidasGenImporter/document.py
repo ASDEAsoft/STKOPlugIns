@@ -345,6 +345,8 @@ class document:
         self.load_cases : Dict[str, load_case] = {}
         # nodal masses in X,Y, and Z directions and the associated nodes
         self.masses : DefaultDict[Tuple[float, float, float], List[int]] = defaultdict(list)
+        # nodal masses in X,Y, and Z directions and the associated nodes (with only structural masses)
+        self.masses_dens : DefaultDict[float, List[int]] = defaultdict(list)
         # computed tolerance
         self.bbox = FxBndBox()
         self.tolerance = 1.0e-6
@@ -444,7 +446,11 @@ class document:
         _masses = {k:v for k,v in self.masses.items()}
         self.masses = defaultdict(list)
         for k,v in _masses.items():
-            self.masses[k] = [old_to_new[i] for i in v]        
+            self.masses[k] = [old_to_new[i] for i in v]    
+        _masses_dens = {k:v for k,v in self.masses_dens.items()}
+        self.masses_dens = defaultdict(list)
+        for k,v in _masses_dens.items():
+            self.masses_dens[k] = [old_to_new[i] for i in v]    
         # get the final number of vertices
         num_vertices_final = len(self.vertices)
         print(f'Merged {num_merged} vertices, from {num_vertices} to {num_vertices_final} within tolerance {self.tolerance:.3g}')

@@ -76,6 +76,7 @@ class builder:
         self._mp_ids : List[int] = []
         # pattern-name to force condition ids
         self._pattern_load_ids : DefaultDict[str, List[int]] = defaultdict(list)
+        self._pattern_eleload_ids : DefaultDict[str, List[int]] = defaultdict(list)
 
         # process
         try:
@@ -90,21 +91,7 @@ class builder:
             self._build_conditions_restraints()
             self._build_conditions_diaphragms()
             self._build_conditions_masses()
-            if False:
-                
-                
-                self._build_conditions_joint_loads()
-                
-                self._build_mesh()
-                self._build_analysis_step_recorder()
-                self._build_analysis_step_constraint_pattern()
-                self._build_analysis_step_load_patterns()
-                self._build_analysis('Gravity Analysis', 'Static', load_const=True, wipe=False, duration=1.0, num_incr=10)
-                self._build_eigen('Post Gravity')
-                done, duration, num_incr = self._build_uniform_excitation()
-                if done:
-                    self._build_monitors()
-                    self._build_analysis('Dynamic Analysis', 'Transient', load_const=True, wipe=True, duration=duration, num_incr=num_incr)
+            self._build_load_cases()
             self._build_finalization()
         except Exception as e:
             raise
@@ -955,533 +942,239 @@ class builder:
                 if vertex_data is None:
                     raise Exception(f'Vertex {i} not found in geometry')
                 geom_node_map[vertex_data.geom].append(vertex_data.subshape_id)
-            for geom, node_ids in geom_node_map.items():
-                # get the geometry and subshape id
-                vertex_data = self._vertex_map.get(i, None)
-                if vertex_data is None:
-                    raise Exception(f'Vertex {i} not found in geometry')
+            for geom, vertices in geom_node_map.items():
                 sset = MpcConditionIndexedSubSet()
-                sset.vertices.append(vertex_data.subshape_id)
-                condition.assignTo(vertex_data.geom, sset)
+                for iv in vertices:
+                    sset.vertices.append(iv)
+                condition.assignTo(geom, sset)
             # add the condition to the document
             self.stko.add_condition(condition)
             condition.commitXObjectChanges()
 
-
-
-
-
-    # builds the conditions for joint loads in STKO
-    def _build_conditions_joint_loads(self):
-        # group loads by load pattern in the joint_load object
-        # key = load pattern name, value = dict of node_id : joint loads
-        pattern_loads : DefaultDict[str, Dict[int, nodal_load]] = defaultdict(dict)
-        for node_id, load in self.midas_doc.joint_loads.items():
-            # add the joint load to the group
-            pattern_loads[load.load_pattern][node_id] = load
-        # process each pattern load list and group them by load value
-        for pattern_name, node_load in pattern_loads.items():
-            load_node_map : DefaultDict[Tuple[float, float, float, float, float, float], List[int]] = DefaultDict(list)
-            for node_id, load in node_load.items():
-                load_node_map[load.value].append(node_id)
-            # process each load value and create a condition for it
-            tracked_loads = self._pattern_load_ids[pattern_name]
-            for load_value, node_ids in load_node_map.items():
-                # split load value into force and moment components
-                F = Math.vec3(*load_value[:3])
-                M = Math.vec3(*load_value[3:])
-                for load_vec, meta_name, label in zip((F, M), ('NodeForce', 'NodeCouple'), ('F', 'M')):
-                    # skip null
-                    if load_vec.norm() < 1.0e-10:
-                        continue
-                    # create a new condition
-                    condition = MpcCondition()
-                    condition.id = self.stko.new_condition_id()
-                    condition.name = f'{meta_name} {load_value}'
-                    # define xobject
-                    meta = self.stko.doc.metaDataCondition(f'Loads.Force.{meta_name}')
-                    xobj = MpcXObject.createInstanceOf(meta)
-                    xobj.getAttribute(label).quantityVector3.value = load_vec
-                    condition.XObject = xobj
-                    # add the assigned nodes to the condition
-                    for i in node_ids:
-                        # get the geometry and subshape id
-                        vertex_data = self._vertex_map.get(i, None)
-                        if vertex_data is None:
-                            raise Exception(f'Vertex {i} not found in geometry')
-                        sset = MpcConditionIndexedSubSet()
-                        sset.vertices.append(vertex_data.subshape_id)
-                        condition.assignTo(vertex_data.geom, sset)
-                    # add the condition to the document
-                    self.stko.add_condition(condition)
-                    condition.commitXObjectChanges()
-                    # track the pattern name to force condition id mapping
-                    tracked_loads.append(condition.id)
-
-    
-
-    # mesh the model
-    def _build_mesh(self):
-        # get mesh controls
-        mc = self.stko.doc.meshControls
-        for _, geom_control in mc.geometryControls.items():
-            # make all faces quad/structured
-            for face_control in geom_control.faceControls:
-                face_control.topology = MpcMeshAlgoTopology.QuadHexa
-                face_control.algorithm = MpcMeshAlgo.Structured
-        # by default STKO uses 1 division per edge, and we are fine with that
-        # mesh the geometry
-        App.runCommand('BuildMesh')
-        # By default partition it with 1 partition: we want to use OpenSeesMP for MUMPS 
-        # but at the moment we need only 1 partition for the Eigen command!
-        MpcMeshPartitioner(self.stko.doc.mesh, 1).run()
-
-    # build analysis step : recorder
-    def _build_analysis_step_recorder(self):
-        # create a new analysis step
-        step = MpcAnalysisStep()
-        step.id = self.stko.new_analysis_step_id()
-        step.name = 'Recorder'
-        # define xobject
-        meta = self.stko.doc.metaDataAnalysisStep('Recorders.MPCORecorder')
-        xobj = MpcXObject.createInstanceOf(meta)
-        xobj.getAttribute('name').string = f'{self.midas_doc.name}.mpco'
-        xobj.getAttribute('displacement').boolean = True
-        xobj.getAttribute('rotation').boolean = True
-        xobj.getAttribute('reactionForce').boolean = True
-        xobj.getAttribute('reactionMoment').boolean = True
-        xobj.getAttribute('modesOfVibration').boolean = True
-        xobj.getAttribute('localForce').boolean = True
-        xobj.getAttribute('section.force').boolean = True
-        # TODO: add more options
-        step.XObject = xobj
-        # add the analysis step to the document
-        self.stko.add_analysis_step(step)
-        step.commitXObjectChanges()
-
-    # build analysis step : constraint pattern
-    # here we just create 1 pattern with all sp and mp constraints
-    def _build_analysis_step_constraint_pattern(self):
-        # create a new analysis step
-        step = MpcAnalysisStep()
-        step.id = self.stko.new_analysis_step_id()
-        step.name = 'Constraint Pattern'
-        # define xobject
-        meta = self.stko.doc.metaDataAnalysisStep('Patterns.addPattern.constraintPattern')
-        xobj = MpcXObject.createInstanceOf(meta)
-        xobj.getAttribute('sp').indexVector = self._sp_ids
-        xobj.getAttribute('mp').indexVector = self._mp_ids
-        step.XObject = xobj
-        # add the analysis step to the document
-        self.stko.add_analysis_step(step)
-        step.commitXObjectChanges()
-    
-    # build an analysis step : load patterns
-    def _build_analysis_step_load_patterns(self):
-        # process all patterns in the static load cases
-        for lc_name, lc in self.midas_doc.load_cases_static.items():
-            for name, pattern_factor in lc.load_patterns:
-                pattern = self.midas_doc.load_patterns.get(name, None)
-                if pattern is None:
-                    raise Exception(f'Load pattern {name} not found in ETABS document')
-                # create a new analysis step
-                step = MpcAnalysisStep()
-                step.id = self.stko.new_analysis_step_id()
-                step.name = f'Load Pattern {name}'
-                # define xobject
-                meta = self.stko.doc.metaDataAnalysisStep('Patterns.addPattern.loadPattern')
-                xobj = MpcXObject.createInstanceOf(meta)
-                xobj.getAttribute('tsTag').index = self._linear_time_series_id
-                # add conditions
-                # - load
-                load_ids = self._pattern_load_ids[name]
-                if len(load_ids) > 0:
-                    xobj.getAttribute('load').indexVector = load_ids
-                # scale
-                xobj.getAttribute('-fact').boolean = True
-                xobj.getAttribute('cFactor').real = pattern_factor
-                # set xobj
-                step.XObject = xobj
-                # add the analysis step to the document
-                self.stko.add_analysis_step(step)
-                step.commitXObjectChanges()
-    
-    # build an analysis step
-    def _build_analysis(self, name : str, atype : str, load_const : bool = True, wipe : bool = True, duration : float = 1.0, num_incr : int = 10):
-        # create a new analysis step
-        step = MpcAnalysisStep()
-        step.id = self.stko.new_analysis_step_id()
-        step.name = name
-        # define xobject
-        meta = self.stko.doc.metaDataAnalysisStep('Analyses.AnalysesCommand')
-        xobj = MpcXObject.createInstanceOf(meta)
-        xobj.getAttribute('analysisType').string = atype
-        xobj.getAttribute('constraints').string = 'Auto'
-        xobj.getAttribute('numbererType').string = 'Parallel Reverse Cuthill-McKee Numberer'
-        xobj.getAttribute('system').string = 'Mumps'
-        xobj.getAttribute('algorithm').string = 'Krylov-Newton'
-        xobj.getAttribute('-maxDim/KrylovNewton').boolean = True
-        xobj.getAttribute('maxDim/KrylovNewton').integer = 40
-        xobj.getAttribute('testCommand').string = 'Norm Displacement Increment Test'
-        xobj.getAttribute('tol/NormDispIncr').real = unit_system.L(1.0e-5, 'm', self.midas_doc.units[1]) 
-        xobj.getAttribute('iter/NormDispIncr').integer = 20
-        xobj.getAttribute('Time Step Type').string = 'Adaptive Time Step'
-        xobj.getAttribute('numIncr').integer = num_incr
-        xobj.getAttribute('loadConst').boolean = load_const
-        if load_const:
-            xobj.getAttribute('use pseudoTime').boolean = True
-            xobj.getAttribute('pseudoTime').real = 0.0
-        xobj.getAttribute('wipeAnalysis').boolean = wipe
-        if atype == 'Static':
-            xobj.getAttribute('staticIntegrators').string = 'Load Control'
-            xobj.getAttribute('duration').real = duration
-        elif atype == 'Transient':
-            xobj.getAttribute('transientIntegrators').string = 'Newmark Method'
-            xobj.getAttribute('gamma').real = 0.5
-            xobj.getAttribute('beta').real = 0.25
-            xobj.getAttribute('duration/transient').real = duration
-        else:
-            raise Exception(f'Unknown analysis type {atype}')
-        # set xobj
-        step.XObject = xobj
-        # add the analysis step to the document
-        self.stko.add_analysis_step(step)
-        step.commitXObjectChanges()
-
-    # build an eigenvalue analysis step
-    def _build_eigen(self, name : str):
-        # define num_modes based on the mode4_ratio in the load case dynamic
-        num_modes = 6
-        for _, lc in self.midas_doc.load_cases_dynamic.items():
-            if lc.mode4_ratio > num_modes:
-                num_modes = lc.mode4_ratio
-        # create a new analysis step
-        step = MpcAnalysisStep()
-        step.id = self.stko.new_analysis_step_id()
-        step.name = f'Eigen Analysis - {name}'
-        # define xobject
-        meta = self.stko.doc.metaDataAnalysisStep('Analyses.eigen')
-        xobj = MpcXObject.createInstanceOf(meta)
-        xobj.getAttribute('numEigenvalues').integer = num_modes
-        # set xobj
-        step.XObject = xobj
-        # add the analysis step to the document
-        self.stko.add_analysis_step(step)
-        step.commitXObjectChanges()
-        # do the same with the modalProperties
-        step = MpcAnalysisStep()
-        step.id = self.stko.new_analysis_step_id()
-        step.name = f'Modal Properties - {name}'
-        # define xobject
-        meta = self.stko.doc.metaDataAnalysisStep('Analyses.modalProperties')
-        xobj = MpcXObject.createInstanceOf(meta)
-        xobj.getAttribute('-print').boolean = True
-        xobj.getAttribute('-file').boolean = True
-        xobj.getAttribute('reportFileName').string = f'{step.name}.modal'
-        # set xobj
-        step.XObject = xobj
-        # add the analysis step to the document
-        self.stko.add_analysis_step(step)
-        step.commitXObjectChanges()
-
-    # build the damping step
-    def _build_damping(self, lc):
-        # create a new analysis step
-        step = MpcAnalysisStep()
-        step.id = self.stko.new_analysis_step_id()
-        step.name = f'Damping - {lc.name}'
-        # define xobject
-        # now we implement it as a tcl custom script to mimick the ETABS behavior
-        meta = self.stko.doc.metaDataAnalysisStep('Misc_commands.customCommand')
-        xobj = MpcXObject.createInstanceOf(meta)
-        if lc.pro_by == 'Direct':
-            xobj.getAttribute('TCLscript').string = f'''
-# Output results
-set CM {lc.mass_coeff} ;# Rayleigh damping coefficient for mass proportional damping
-set CK {lc.stiff_coeff} ;# Rayleigh damping coefficient for stiffness proportional damping
-puts "Direct Rayleigh Damping..."
-puts "CM (alpha): $CM"
-puts "CK (beta):  $CK"
-# define OpenSees command
-# rayleigh $alphaM $betaK $betaKinit $betaKcomm
-rayleigh $CM 0.0 $CK 0.0
-'''
-        else:
-            xobj.getAttribute('TCLscript').string = f'''
-# User inputs
-set Mode4Ratio {lc.mode4_ratio} ;# Index of reference mode (1-based)
-set ProTimeVal1 {lc.pro_time_val1 if lc.pro_by == 'Frequency Ratio' else 1.0/lc.pro_time_val1} ;# Scale factor for F1
-set ProTimeVal2 {lc.pro_time_val2 if lc.pro_by == 'Frequency Ratio' else 1.0/lc.pro_time_val2} ;# Scale factor for F2
-set ProDamping1 {lc.pro_damping1} ;# Damping ratio at F1
-set ProDamping2 {lc.pro_damping2} ;# Damping ratio at F2
-
-puts "Defining Rayleigh Damping..."
-puts "    Mode4Ratio : $Mode4Ratio "
-puts "   ProTimeVal1 : $ProTimeVal1"
-puts "   ProTimeVal2 : $ProTimeVal2"
-puts "   ProDamping1 : $ProDamping1"
-puts "   ProDamping2 : $ProDamping2"
-
-# Find first .modal file in current directory
-set modalFile ""
-foreach f [glob *.modal] {{
-    set modalFile $f
-    break
-}}
-
-if {{$modalFile eq ""}} {{
-    puts "No .modal file found in current directory."
-    exit
-}}
-puts "   Using modal file: $modalFile"
-
-# Open .modal file
-set in [open $modalFile "r"]
-set lines [split [read $in] "\n"]
-close $in
-
-# Parse frequencies
-set freqs {{}}
-set inEigen 0
-foreach line $lines {{
-    if {{[string match "*EIGENVALUE ANALYSIS*" $line]}} {{
-        set inEigen 1
-    }} elseif {{$inEigen && [regexp {{^\s*\d+\s+[\d.eE+-]+\s+[\d.eE+-]+\s+([\d.eE+-]+)}} $line match freq]}} {{
-        lappend freqs $freq
-    }} elseif {{$inEigen && [string match "*TOTAL MASS*" $line]}} {{
-        break
-    }}
-}}
-
-set nFreqs [llength $freqs]
-if {{$Mode4Ratio > $nFreqs}} {{
-    puts "Error: Mode4Ratio ($Mode4Ratio) exceeds number of modes found ($nFreqs)."
-    exit
-}}
-
-# Get reference frequency
-set FR [lindex $freqs [expr {{$Mode4Ratio - 1}}]]
-
-# Compute F1 and F2
-set F1 [expr {{$ProTimeVal1 * $FR}}]
-set F2 [expr {{$ProTimeVal2 * $FR}}]
-
-# Convert to angular frequencies
-set w1 [expr {{2.0 * 3.141592653589793 * $F1}}]
-set w2 [expr {{2.0 * 3.141592653589793 * $F2}}]
-
-# Damping ratios
-set xi1 $ProDamping1
-set xi2 $ProDamping2
-
-# Compute Rayleigh coefficients
-set numerator_alpha [expr {{$w1 * $w2 * ($w2 * $xi1 - $w1 * $xi2)}}]
-set denominator [expr {{$w2*$w2 - $w1*$w1}}]
-set CM [expr {{2.0 * $numerator_alpha / $denominator}}]
-
-set numerator_beta [expr {{$w2 * $xi2 - $w1 * $xi1}}]
-set CK [expr {{2.0 * $numerator_beta / $denominator}}]
-
-# Output results
-puts "Reference Frequency (FR): $FR Hz"
-puts "F1: $F1 Hz"
-puts "F2: $F2 Hz"
-puts "CM (alpha): $CM"
-puts "CK (beta):  $CK"
-
-# define OpenSees command
-# rayleigh $alphaM $betaK $betaKinit $betaKcomm
-rayleigh $CM 0.0 $CK 0.0
-'''
-        # set xobj
-        step.XObject = xobj
-        # add the analysis step to the document
-        self.stko.add_analysis_step(step)
-        step.commitXObjectChanges()
-
-    # builds default monitors
-    def _build_monitors(self):
-        # find a reference node
-        # try the top-most node in the rigid diaphragms
-        control_geom_info = None
-        zmax = -float('inf')
-        for name, items in self.midas_doc.diaphragms.items():
-            if len(items) > 0:
-                retained_id = items[-1]
-                retained_z = self.midas_doc.vertices[retained_id].z
-                if retained_z > zmax:
-                    zmax = retained_z
-                    # get the geometry and subshape id
-                    retained_data = self._vertex_map.get(retained_id, None)
-                    if retained_data is None:
-                        raise Exception(f'Diagram {name} retained vertex {retained_id} not found in geometry')
-                    control_geom_info = retained_data
-        # if not found, exit
-        if control_geom_info is None:
+    # builds the self-weight condition in STKO
+    def _build_self_weight(self, lc:load_case):
+        if lc.self_weight is None:
+            # no self-weight defined, skip
             return
-        # get all information about the reaction nodes at restraints
-        reaction_geom_info : List[_geometry_map_item] = []
-        for i, _ in self.midas_doc.constraints.items():
-            # get the geometry and subshape id
-            vertex_data = self._vertex_map.get(i, None)
-            if vertex_data is None:
-                raise Exception(f'Restraint {i} not found in geometry')
-            # add to the list
-            reaction_geom_info.append(vertex_data)
-        # create 2 selection sets, one for the control node and one for the reaction nodes
-        # control node selection set
-        control_sset = MpcSelectionSet()
-        control_sset.id = self.stko.new_selection_set_id()
-        control_sset.name = 'Control Node'
-        sset_item = MpcSelectionSetItem()
-        sset_item.wholeGeometry = False
-        sset_item.vertices.append(control_geom_info.subshape_id)
-        control_sset.geometries[control_geom_info.geom.id] = sset_item
-        self.stko.add_selection_set(control_sset)
-        # reaction nodes selection set
-        reaction_sset = MpcSelectionSet()
-        reaction_sset.id = self.stko.new_selection_set_id()
-        reaction_sset.name = 'Reaction Nodes'
-        for vertex_data in reaction_geom_info:
-            if vertex_data.geom.id in reaction_sset.geometries:
-                # if the geometry is already in the selection set, just append the vertex
-                sset_item = reaction_sset.geometries[vertex_data.geom.id]
-            else:
-                # if the geometry is not in the selection set, create a new item
-                sset_item = MpcSelectionSetItem()
-                sset_item.wholeGeometry = False
-                reaction_sset.geometries[vertex_data.geom.id] = sset_item
-            sset_item.vertices.append(vertex_data.subshape_id)
-        self.stko.add_selection_set(reaction_sset)
-        # now we can build the monitors
-        # 1. Force-Displacement-X
-        # 2. Force-Displacement-Y
-        # 3. Acceleration-Time-X
-        # 4. Acceleration-Time-Y
-        for mon_type, mon_name in enumerate(('Force-Displacement', 'Acceleration-Time')):
-            for dir_label in ('X', 'Y'):
-                # create a new monitor
-                monitor = MpcAnalysisStep()
-                monitor.id = self.stko.new_analysis_step_id()
-                monitor.name = f'{mon_name}-{dir_label}'
+        # create a self-weight condition
+        g = self.midas_doc.struct_type.grav
+        for mass, node_ids in self.midas_doc.masses_dens.items():
+            sw = Math.vec3(0.0, 0.0, -g * mass)
+            # make condition only if self-weight is not zero
+            if sw.norm() < 1.0e-10:
+                continue
+            condition = MpcCondition()
+            condition.id = self.stko.new_condition_id()
+            condition.name = f'Self Weight ({sw.z:.2g})'
+            # define xobject
+            meta = self.stko.doc.metaDataCondition('Loads.Force.NodeForce')
+            xobj = MpcXObject.createInstanceOf(meta)
+            xobj.getAttribute('F').quantityVector3.value = sw
+            condition.XObject = xobj
+            # add the assigned nodes to the condition
+            # group nodes by geometry
+            geom_node_map : DefaultDict[MpcGeometry, List[int]] = defaultdict(list)
+            for i in node_ids:
+                # get the geometry and subshape id
+                vertex_data = self._vertex_map.get(i, None)
+                if vertex_data is None:
+                    raise Exception(f'Vertex {i} not found in geometry')
+                geom_node_map[vertex_data.geom].append(vertex_data.subshape_id)
+            for geom, vertices in geom_node_map.items():
+                sset = MpcConditionIndexedSubSet()
+                for iv in vertices:
+                    sset.vertices.append(iv)
+                condition.assignTo(geom, sset)
+            # add the condition to the document
+            self.stko.add_condition(condition)
+            condition.commitXObjectChanges()
+            # track the load id for the load pattern
+            self._pattern_load_ids[lc.name].append(condition.id)
+                
+    # builds the nodal loads in STKO
+    def _build_nodal_loads(self, lc:load_case):
+        for node_load, node_ids in lc.nodal_loads.items():
+            F = Math.vec3(*node_load.value[:3])
+            M = Math.vec3(*node_load.value[3:])
+            for load_vec, meta_name, label in zip((F, M), ('NodeForce', 'NodeCouple'), ('F', 'M')):
+                # skip null
+                if load_vec.norm() < 1.0e-10:
+                    continue
+                # create a new condition
+                condition = MpcCondition()
+                condition.id = self.stko.new_condition_id()
+                condition.name = f'{meta_name} {node_load}'
                 # define xobject
-                meta = self.stko.doc.metaDataAnalysisStep('Misc_commands.monitor')
+                meta = self.stko.doc.metaDataCondition(f'Loads.Force.{meta_name}')
                 xobj = MpcXObject.createInstanceOf(meta)
-                xobj.getAttribute('Monitor Plot').boolean = True
-                xobj.getAttribute('Use Custom Name').boolean = True
-                xobj.getAttribute('Custom Name').string = f'{mon_name}-{dir_label}'
-                if mon_type == 0:
-                    # plot-x (displacement)
-                    xobj.getAttribute('Type/X').string = 'Results X Axis Plot'
-                    xobj.getAttribute('Result/X').string = 'Displacement'
-                    xobj.getAttribute('Component/X').string = dir_label
-                    xobj.getAttribute('Selection Set/X').index = control_sset.id
-                    xobj.getAttribute('Operation/X').string = 'Average'
-                    # plot-y (-reaction force)
-                    xobj.getAttribute('Type/Y').string = 'Results Y Axis Plot'
-                    xobj.getAttribute('Result/Y').string = 'Reaction Force'
-                    xobj.getAttribute('Component/Y').string = dir_label
-                    xobj.getAttribute('Selection Set/Y').index = reaction_sset.id
-                    xobj.getAttribute('Operation/Y').string = 'Sum'
-                    xobj.getAttribute('ScaleFactor/Y').real = -1.0
-                    # labels
-                    xobj.getAttribute('XLabelAppend').string = f'[{self.midas_doc.units[1]}]'
-                    xobj.getAttribute('YLabelAppend').string = f'[{self.midas_doc.units[0]}]'
-                else:
-                    # plot-x (time)
-                    xobj.getAttribute('Type/X').string = 'Pseudo Time'
-                    # plot-y (acceleration)
-                    xobj.getAttribute('Type/Y').string = 'Results Y Axis Plot'
-                    xobj.getAttribute('Result/Y').string = 'Acceleration'
-                    xobj.getAttribute('Component/Y').string = dir_label
-                    xobj.getAttribute('Selection Set/Y').index = control_sset.id
-                    xobj.getAttribute('Operation/Y').string = 'Average'
-                    # labels
-                    xobj.getAttribute('XLabelAppend').string = 's'
-                    xobj.getAttribute('YLabelAppend').string = f'[{self.midas_doc.units[1]}/s^2]'
-                # set xobj
-                monitor.XObject = xobj
-                # add the analysis step to the document
-                self.stko.add_analysis_step(monitor)
-                monitor.commitXObjectChanges()
+                xobj.getAttribute(label).quantityVector3.value = load_vec
+                condition.XObject = xobj
+                # add the assigned nodes to the condition
+                geom_node_map : DefaultDict[MpcGeometry, List[int]] = defaultdict(list)
+                for i in node_ids:
+                    # get the geometry and subshape id
+                    vertex_data = self._vertex_map.get(i, None)
+                    if vertex_data is None:
+                        raise Exception(f'Vertex {i} not found in geometry')
+                    geom_node_map[vertex_data.geom].append(vertex_data.subshape_id)
+                for geom, vertices in geom_node_map.items():
+                    sset = MpcConditionIndexedSubSet()
+                    for iv in vertices:
+                        sset.vertices.append(iv)
+                    condition.assignTo(geom, sset)
+                # add the condition to the document
+                self.stko.add_condition(condition)
+                condition.commitXObjectChanges()
+                # track the load id for the load pattern
+                self._pattern_load_ids[lc.name].append(condition.id)
 
-    # build uniform excitation.
-    # returns a tuple (bool, float, int)
-    # where the first is True if the uniform excitation was built,
-    # the second is the total duration of the uniform excitation,
-    # and the third is the number of increments.
-    def _build_uniform_excitation(self) -> Tuple[bool, float, int]:
-        '''
-        TODO: to be decided.
-        # now we ask the user what to choose for the uniform excitation.
-        '''
-        # quick return if no time histories are defined
-        if len(self.midas_doc.load_cases_dynamic) == 0:
-            return False, 0.0, 0
-        # if there are more than 1 time histories defined,
-        # gather information and let the user choose which one to use.
-        index = 0
-        if len(self.midas_doc.load_cases_dynamic) > 1:
-            # gather information as a list of string.
-            # each one has:
-            # name, duration, AMax (one for each comp), ProBy
-            # we will use this to let the user choose which one to use.
-            info = []
-            for _, lc in self.midas_doc.load_cases_dynamic.items():
-                dt = lc.step_size
-                duration = dt * lc.num_steps
-                lc_info = f'{lc.name} - Step: {dt:.3f}s, Duration: {duration:.3f}s, ProBy: {lc.pro_by}'
-                for function, direction, scale in lc.functions:
-                    # get the time history
-                    th = self.midas_doc.th_functions.get(function, None)
-                    if th is None:
-                        raise Exception(f'Time history {function} not found in ETABS document')
-                    # get the max value
-                    amax = max(abs(v) for v in th.values) * scale
-                    # add to info
-                    lc_info += f', {direction}: max(A): {amax:.3f}'
-                info.append(lc_info)
-            # ask the user to choose which one to use
-            index = self.stko.select_from_list(
-                'Please select the dynamic load case to use for the analysis.',
-                info,
-                default_index=0,
-            )
-            if index < 0 or index >= len(self.midas_doc.load_cases_dynamic):
-                # user cancelled
-                return False, 0.0, 0
-        # get the selected load case
-        lc = list(self.midas_doc.load_cases_dynamic.values())[index]
-        # get duration and increments for the result
-        dt = lc.step_size
-        duration = dt * lc.num_steps
-        retval = (True, duration, lc.num_steps)
-        # create the uniform excitations (one for each item in lc.functions)
-        for function, direction, scale in lc.functions:
-            # get the time history
-            th = self.midas_doc.th_functions.get(function, None)
-            if th is None:
-                raise Exception(f'Time history {function} not found in ETABS document')
-            # create a analysis step
+    # builds the beam loads in STKO
+    def _build_beam_loads(self, lc:load_case):
+        for ele_load, ele_ids in lc.beam_loads.items():
+            # create a new condition
+            condition = MpcCondition()
+            condition.id = self.stko.new_condition_id()
+            condition.name = f'Beam Load ({ele_load.value[0]:.2g} {ele_load.value[1]:.2g} {ele_load.value[2]:.2g})'
+            # define xobject
+            meta = self.stko.doc.metaDataCondition('Loads.eleLoad.eleLoad_beamUniform')
+            xobj = MpcXObject.createInstanceOf(meta)
+            xobj.getAttribute('Dimension').string = '3D'
+            xobj.getAttribute('2D').boolean = False
+            xobj.getAttribute('3D').boolean = True
+            xobj.getAttribute('use_Wx').boolean = True
+            xobj.getAttribute('Wx').real = ele_load.value[0]
+            xobj.getAttribute('Wy').real = ele_load.value[1]
+            xobj.getAttribute('Wz').real = ele_load.value[2]
+            if ele_load.local:
+                xobj.getAttribute('Orientation').string = 'Local'
+                xobj.getAttribute('Global').boolean = False
+            else:
+                xobj.getAttribute('Orientation').string = 'Global'
+                xobj.getAttribute('Global').boolean = True
+            condition.XObject = xobj
+            # add the assigned elements to the condition
+            geom_ele_map : DefaultDict[MpcGeometry, List[int]] = defaultdict(list)
+            for i in ele_ids:
+                # get the geometry and subshape id
+                frame_data = self._frame_map.get(i, None)
+                if frame_data is None:
+                    raise Exception(f'Frame {i} not found in geometry')
+                geom_ele_map[frame_data.geom].append(frame_data.subshape_id)
+            for geom, edges in geom_ele_map.items():
+                sset = MpcConditionIndexedSubSet()
+                for ie in edges:
+                    sset.edges.append(ie)
+                condition.assignTo(geom, sset)
+            # add the condition to the document
+            self.stko.add_condition(condition)
+            condition.commitXObjectChanges()
+            # track the load id for the load pattern
+            self._pattern_eleload_ids[lc.name].append(condition.id)
+
+    # builds the pressure loads in STKO
+    def _build_pressure_loads(self, lc:load_case):
+        for press, ele_ids in lc.pressure_loads.items():
+            # create a new condition
+            condition = MpcCondition()
+            condition.id = self.stko.new_condition_id()
+            condition.name = f'Pressure Load ({press.value[0]:.2g}, {press.value[1]:.2g}, {press.value[2]:.2g})'
+            # define xobject
+            meta = self.stko.doc.metaDataCondition('Loads.Force.FaceForce')
+            xobj = MpcXObject.createInstanceOf(meta)
+            if press.local:
+                xobj.getAttribute('Orientation').string = 'Local'
+                xobj.getAttribute('Global').boolean = False
+            else:
+                xobj.getAttribute('Orientation').string = 'Global'
+                xobj.getAttribute('Global').boolean = True
+            xobj.getAttribute('F').quantityVector3.value = Math.vec3(*press.value[:3])
+            condition.XObject = xobj
+            # add the assigned elements to the condition
+            geom_ele_map : DefaultDict[MpcGeometry, List[int]] = defaultdict(list)
+            for i in ele_ids:
+                # get the geometry and subshape id
+                area_data = self._area_map.get(i, None)
+                if area_data is None:
+                    raise Exception(f'Area {i} not found in geometry')
+                geom_ele_map[area_data.geom].append(area_data.subshape_id)
+            for geom, faces in geom_ele_map.items():
+                sset = MpcConditionIndexedSubSet()
+                for ie in faces:
+                    sset.faces.append(ie)
+                condition.assignTo(geom, sset)
+            # add the condition to the document
+            self.stko.add_condition(condition)
+            condition.commitXObjectChanges()
+            # track the load id for the load pattern
+            self._pattern_load_ids[lc.name].append(condition.id)
+
+    # builds the floor loads in STKO
+    def _build_floor_loads(self, lc:load_case):
+        # build floor load as NodeForce (not Moments)
+        for floor_load, node_ids in lc.floor_loads.items():
+            # create a new condition
+            condition = MpcCondition()
+            condition.id = self.stko.new_condition_id()
+            condition.name = f'Floor Load ({floor_load.value[0]:.2g}, {floor_load.value[1]:.2g}, {floor_load.value[2]:.2g})'
+            # define xobject
+            meta = self.stko.doc.metaDataCondition('Loads.Force.NodeForce')
+            xobj = MpcXObject.createInstanceOf(meta)
+            xobj.getAttribute('F').quantityVector3.value = Math.vec3(*floor_load.value)
+            condition.XObject = xobj
+            # add the assigned nodes to the condition
+            geom_node_map : DefaultDict[MpcGeometry, List[int]] = defaultdict(list)
+            for i in node_ids:
+                # get the geometry and subshape id
+                vertex_data = self._vertex_map.get(i, None)
+                if vertex_data is None:
+                    raise Exception(f'Vertex {i} not found in geometry')
+                geom_node_map[vertex_data.geom].append(vertex_data.subshape_id)
+            for geom, vertices in geom_node_map.items():
+                sset = MpcConditionIndexedSubSet()
+                for iv in vertices:
+                    sset.vertices.append(iv)
+                condition.assignTo(geom, sset)
+            # add the condition to the document
+            self.stko.add_condition(condition)
+            condition.commitXObjectChanges()
+            # track the load id for the load pattern
+            self._pattern_load_ids[lc.name].append(condition.id)
+
+    # builds the load cases in STKO
+    def _build_load_cases(self):
+        for lc_name, lc in self.midas_doc.load_cases.items():
+            self._build_self_weight(lc)
+            self._build_nodal_loads(lc)
+            self._build_beam_loads(lc)
+            self._build_pressure_loads(lc)
+            self._build_floor_loads(lc)
+        # now build the load patterns
+        for lc_name, _ in self.midas_doc.load_cases.items():
+            # create a new Analysis Step
             step = MpcAnalysisStep()
             step.id = self.stko.new_analysis_step_id()
-            step.name = f'({lc.name} - Uniform Excitation {function} - {direction}'
+            step.name = f'Load Pattern {lc_name}'
             # define xobject
-            meta = self.stko.doc.metaDataAnalysisStep('Patterns.addPattern.UniformExcitation')
+            meta = self.stko.doc.metaDataAnalysisStep('Patterns.addPattern.loadPattern')
             xobj = MpcXObject.createInstanceOf(meta)
-            xobj.getAttribute('tsTag').index = self._th_ids[function]
-            xobj.getAttribute('direction').string = _globals.uniform_excitation_dir_map[direction]
+            xobj.getAttribute('tsTag').index = self._linear_time_series_id
+            # add conditions
+            # - load
+            load_ids = self._pattern_load_ids[lc_name]
+            if len(load_ids) > 0:
+                xobj.getAttribute('load').indexVector = load_ids
+            # - eleLoad
+            ele_load_ids = self._pattern_eleload_ids[lc_name]
+            if len(ele_load_ids) > 0:
+                xobj.getAttribute('eleLoad').indexVector = ele_load_ids
+            # scale
             xobj.getAttribute('-fact').boolean = True
-            xobj.getAttribute('cFactor').real = scale
+            xobj.getAttribute('cFactor').real = 1.0
             # set xobj
             step.XObject = xobj
             # add the analysis step to the document
             self.stko.add_analysis_step(step)
             step.commitXObjectChanges()
-        # build the damping step
-        self._build_damping(lc)
-        # return the result
-        return retval
 
     # do some extra stuff to finalize the import
     def _build_finalization(self):
