@@ -200,6 +200,8 @@ class parser:
 
     # this function parses the area section and adds it to the document as area_material     
     def _parse_area_sections(self):
+        # TODO: check flipped sections with wrong assigments
+        # TODO: check non-convergnce of shells!
         for is_wall in (False, True):
             cmd_name = 'AREA_SECTION_PROPERTIES_{}'.format('WALL' if is_wall else 'SLAB')
             for item in self.commands[f'* {cmd_name}']:
