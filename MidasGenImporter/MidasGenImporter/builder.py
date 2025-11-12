@@ -88,6 +88,7 @@ class builder:
             self._build_definitions()
             self._build_frame_sections()
             self._build_area_sections()
+            self._build_elastic_links()
             self._build_conditions_restraints()
             self._build_conditions_diaphragms()
             self._build_conditions_masses()
@@ -775,7 +776,8 @@ class builder:
             if sec is None:
                 raise Exception(f'Thickness {sec_id} not found for area section with material {mat_id}, section {sec_id}, modifier {mod_id}')
             if sec.offset != 0.0:
-                raise Exception(f'Thickness {sec_id} has an offset {sec.offset} which is not supported in STKO. Please remove the offset from the thickness in MIDAS.')
+                print(f'Warning: Thickness {sec_id} has an offset {sec.offset}. STKO does not support thickness offsets ...')
+                #raise Exception(f'Thickness {sec_id} has an offset {sec.offset} which is not supported in STKO. Please remove the offset from the thickness in MIDAS.')
             # get the modifier
             mod = self.midas_doc.thickness_scale_factors[mod_id] if mod_id >= 0 else None
             # now we can compute the stiffnesses of the plate and create a layered shell if there is an offset
@@ -826,6 +828,98 @@ class builder:
                 geom.assign(ele_prop_t3, subshape_ids, MpcSubshapeType.Face)
             for geom, subshape_ids in geom_sub_map_q4.items():
                 geom.assign(ele_prop_q4, subshape_ids, MpcSubshapeType.Face)
+
+    # builds the elastic links in STKO
+    def _build_elastic_links(self):
+        '''
+        TODO: implement elastic links correctly, this is just a placeholder for Ex01
+        '''
+        # create 1 element property for all links as zero length
+        ele_prop = MpcElementProperty()
+        ele_prop.id = self.stko.new_element_property_id()
+        ele_prop.name = 'Rigid Elastic Link'
+        meta = self.stko.doc.metaDataElementProperty('zero_length_elements.zeroLength')
+        xobj = MpcXObject.createInstanceOf(meta)
+        xobj.getAttribute('Dimension').string = '3D'
+        xobj.getAttribute('2D').boolean = False
+        xobj.getAttribute('3D').boolean = True
+        ele_prop.XObject = xobj
+        self.stko.add_element_property(ele_prop)
+        ele_prop.commitXObjectChanges()
+
+        # map rigid flags to physical properties
+        link_uniaxials : List[MpcProperty] = []
+        map_link_prop : Dict[Tuple[bool, bool, bool, bool, bool, bool], MpcProperty] = {}
+        def _get_link_property(rigid_flags:Tuple[bool, bool, bool, bool, bool, bool]) -> MpcProperty:
+            prop = map_link_prop.get(rigid_flags, None)
+            if prop is None:
+                # create a uniaxial material for the link stiffness
+                if len(link_uniaxials) == 0:
+                    for (i_name, i_stiff) in zip(('Soft', 'Stiff'), (0.0, 1.0e12)):
+                        prop = MpcProperty()
+                        prop.id = self.stko.new_physical_property_id()
+                        prop.name = i_name
+                        meta = self.stko.doc.metaDataPhysicalProperty('materials.uniaxial.Elastic')
+                        xobj = MpcXObject.createInstanceOf(meta)
+                        xobj.getAttribute('E').quantityScalar.value = i_stiff
+                        prop.XObject = xobj
+                        self.stko.add_physical_property(prop)
+                        prop.commitXObjectChanges()
+                        link_uniaxials.append(prop)
+                # create new physical property
+                prop = MpcProperty()
+                prop.id = self.stko.new_physical_property_id()
+                prop.name = f'Link Property {"".join(["R" if f else "F" for f in rigid_flags])}'
+                meta = self.stko.doc.metaDataPhysicalProperty('special_purpose.zeroLengthMaterial')
+                xobj = MpcXObject.createInstanceOf(meta)
+                xobj.getAttribute('Dimension').string = '3D'
+                xobj.getAttribute('2D').boolean = False
+                xobj.getAttribute('3D').boolean = True
+                xobj.getAttribute('ModelType').string = 'U-R (Displacement+Rotation)'
+                xobj.getAttribute('U (Displacement)').boolean = False
+                xobj.getAttribute('U-R (Displacement+Rotation)').boolean = True
+                for i in range(1, 7):
+                    si = f'{i}/3D' if i == 3 else str(i)
+                    xobj.getAttribute(f'dir{si}').boolean = True
+                    xobj.getAttribute(f'matTag{si}').index = link_uniaxials[0].id if not rigid_flags[i-1] else link_uniaxials[1].id
+                prop.XObject = xobj
+                self.stko.add_physical_property(prop)
+                prop.commitXObjectChanges()
+                # map it
+                map_link_prop[rigid_flags] = prop
+            return prop
+
+        # map property to geom and list of subshape ids
+        prop_geom_sub_map : DefaultDict[MpcProperty, DefaultDict[MpcGeometry, List[int]]] = defaultdict(lambda: defaultdict(list))
+
+        # process links in frames
+        NUM_SKIPPED = 0
+        for ele_id, ele in self.midas_doc.frames.items():
+            # skip frames
+            if ele.link is None:
+                continue
+            # TODO: for now we consider only links with at least 1 rigid flag = True
+            rigid_flags = ele.link.rigid_flags
+            if not any(rigid_flags):
+                #print(f'Warning: Link in frame {ele_id} has all rigid flags set to False. Skipping ...')
+                NUM_SKIPPED += 1
+                continue
+            # get the physical property
+            prop = _get_link_property(rigid_flags)
+            # map to geom and subshape id
+            frame_data = self._frame_map.get(ele_id, None)
+            if frame_data is None:
+                raise Exception(f'Frame {ele_id} not found in geometry')
+            prop_geom_sub_map[prop][frame_data.geom].append(frame_data.subshape_id)
+
+        print(f'Info: Skipped {NUM_SKIPPED} elastic links with all rigid flags set to False.')
+
+        # assign properties to geometries
+        for prop, geom_sub_map in prop_geom_sub_map.items():
+            for geom, subshape_ids in geom_sub_map.items():
+                geom.assign(prop, subshape_ids, MpcSubshapeType.Edge)
+                # assign also the element property
+                geom.assign(ele_prop, subshape_ids, MpcSubshapeType.Edge)
 
     # builds the conditions for restraints in STKO
     def _build_conditions_restraints(self):

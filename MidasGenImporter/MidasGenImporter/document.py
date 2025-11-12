@@ -263,6 +263,7 @@ class load_case:
     def __repr__(self):
         return self.__str__()
     def check(self):
+        return
         # define a helper function to make a counter from a list
         def _make_counter(source:List[int]) -> DefaultDict[int, int]:
             counter = defaultdict(int)

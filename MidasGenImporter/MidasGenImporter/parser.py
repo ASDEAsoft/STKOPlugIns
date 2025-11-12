@@ -798,6 +798,13 @@ class parser:
                     raise Exception('Beam loads with eccen are not supported, found: {}'.format(eccen))
                 # take the second value of VALUE, that's the constant value in case of UNILOAD
                 load_component = float(words[11])
+                # support partial loads in a simplified way:
+                # consider only the uniform value [11], but scale it if D2-D1 < 1.0
+                D1 = float(words[10])
+                D2 = float(words[12])
+                scale = D2-D1
+                load_component *= scale
+                # make load vector
                 load_value = (load_component if component == 0 else 0.0,
                               load_component if component == 1 else 0.0,
                               load_component if component == 2 else 0.0)
@@ -810,6 +817,35 @@ class parser:
                 if len(lc.beam_loads) > 0:
                     self.interface.send_message(f'Parsed {len(lc.beam_loads)} beam loads for load case {lc_name}', mtype=stko_interface.message_type.INFO)
 
+        # beam load summary
+        print('Beam Loads Summary:')
+        Q_SUM_ALL = 0.0
+        N_SUM_ALL = 0.0
+        for lc_name, lc in self.doc.load_cases.items():
+            print(f' Load Case: {lc_name}')
+            Q_SUM = 0.0 # sum load per unit length
+            N_SUM = 0.0 # sum of total load from beam loads
+            for beam_load_obj, elem_list in lc.beam_loads.items():
+                value = beam_load_obj.value[2]
+                for elem_id in elem_list:
+                    elem = self.doc.frames.get(elem_id, None)
+                    if elem is None:
+                        raise Exception(f'  Element ID: {elem_id} not in document frames')
+                    n1,n2 = elem.nodes
+                    node1 = self.doc.vertices.get(n1, None)
+                    node2 = self.doc.vertices.get(n2, None)
+                    if node1 is None or node2 is None:
+                        raise Exception(f'  Element ID: {elem_id} has invalid node IDs: {n1}, {n2}')
+                    L = (node2 - node1).norm()
+                    Q_SUM += value
+                    N_SUM += value * L
+            print(f'    Total uniform load per unit length (Z dir): {Q_SUM} kN/m')
+            print(f'    Total uniform load from beam loads (Z dir): {N_SUM} kN')
+            Q_SUM_ALL += Q_SUM
+            N_SUM_ALL += N_SUM
+        print(f' Overall total uniform load per unit length (Z dir): {Q_SUM_ALL} kN/m')
+        print(f' Overall total uniform load from beam loads (Z dir): {N_SUM_ALL} kN')
+                    
     # this function parses the pressure loads and adds them to the document
     def _parse_pressure_loads(self):
         '''
@@ -1060,7 +1096,7 @@ class parser:
                 raise Exception(f'Frame element {ele_id} has invalid section: {ele.sec}')
             area = sec.area
             # lumped mass
-            mass = density * length * area / 2.0
+            mass = abs(density * length * area / 2.0)
             mass = Math.vec3(mass, mass, mass)
             # add the mass to the 2 nodes of the element
             node_mass[n1] += mass
@@ -1094,12 +1130,24 @@ class parser:
                 raise Exception(f'Area element {ele_id} has invalid section: {ele.sec}')
             thick = sec.in_thick
             # lumped mass
-            mass = density * area * thick / len(nodes)  # divide by number of nodes to distribute the mass evenly
+            mass = abs(density * area * thick / len(nodes))  # divide by number of nodes to distribute the mass evenly
             mass = Math.vec3(mass, mass, mass)
             # add the mass to the nodes of the element
             for node_id in ele.nodes:
                 node_mass[node_id] += mass
         print(f'Parsed {len(node_mass)} nodal masses from densities')
+
+
+        STRUCT_MASS = 0.0
+        L2M_NODE = 0.0
+        L2M_BEAM = 0.0
+        L2M_BEAM_LOAD = 0.0
+        L2M_BEAM_LOAD_DIST = 0.0
+        L2M_FLOOR = 0.0
+        L2M_PRES = 0.0
+        for _, mass in node_mass.items():
+            STRUCT_MASS += mass.z  # sum Z component as total mass
+
         # copy this dict so keep only densities
         node_mass_dens:Dict[int,float] = {node_id : mass.x for node_id, mass in node_mass.items()}
         # now parse the load to masses
@@ -1148,16 +1196,18 @@ class parser:
                         for load, nodes in lc.nodal_loads.items():
                             Fz = load.value[2]
                             if Fz == 0.0: continue
-                            mass = Fz * factor / grav * direction
+                            mass = abs(Fz * factor / grav) * direction
                             for node_id in nodes:
                                 node_mass[node_id] += mass
+                                L2M_NODE += mass.z
                     if b_floor:
                         for load, nodes in lc.floor_loads.items():
                             Fz = load.value[2]
                             if Fz == 0.0: continue
-                            mass = Fz * factor / grav * direction
+                            mass = abs(Fz * factor / grav) * direction
                             for node_id in nodes:
                                 node_mass[node_id] += mass
+                                L2M_FLOOR += mass.z
                     if b_beam:
                         for load, elems in lc.beam_loads.items():
                             if load.local:
@@ -1166,16 +1216,19 @@ class parser:
                             if Fz == 0.0: continue
                             # get the length of the element
                             for elem_id in elems:
-                                length = ele_length_map.get(elem_id, None)
-                                if length is None:
-                                    raise Exception(f'Length of element {elem_id} not found for LOADTOMASS')
-                                mass = Fz * factor / grav * direction * length / len(ele.nodes)  # divide by number of nodes to distribute the mass evenly
-                                # get the nodes of the element
                                 ele = self.doc.frames.get(elem_id, None)
                                 if ele is None:
                                     raise Exception(f'Element {elem_id} not found for LOADTOMASS')
+                                length = ele_length_map.get(elem_id, None)
+                                if length is None:
+                                    raise Exception(f'Length of element {elem_id} not found for LOADTOMASS')
+                                mass = abs(Fz * factor / grav) * direction * length / len(ele.nodes)  # divide by number of nodes to distribute the mass evenly
+                                # get the nodes of the element
                                 for ele_node in ele.nodes:
                                     node_mass[ele_node] += mass
+                                    L2M_BEAM += mass.z
+                                L2M_BEAM_LOAD_DIST += Fz
+                                L2M_BEAM_LOAD += Fz * length
                     if b_pres:
                         for load, elems in lc.pressure_loads.items():
                             # get the area of the element
@@ -1192,13 +1245,14 @@ class parser:
                                 area = ele_area_map.get(elem_id, None)
                                 if area is None:
                                     raise Exception(f'Area of element {elem_id} not found for LOADTOMASS')
-                                mass = Fz * factor / grav * direction * area / len(ele.nodes)  # divide by number of nodes to distribute the mass evenly
+                                mass = abs(Fz * factor / grav) * direction * area / len(ele.nodes)  # divide by number of nodes to distribute the mass evenly
                                 # get the nodes of the element
                                 ele = self.doc.areas.get(elem_id, None)
                                 if ele is None:
                                     raise Exception(f'Element {elem_id} not found for LOADTOMASS')
                                 for ele_node in ele.nodes:
                                     node_mass[ele_node] += mass
+                                    L2M_PRES += mass.z
 
         # merge nodal masses with same value
         for node_id, mass in node_mass_dens.items():
@@ -1207,6 +1261,16 @@ class parser:
             key = (mass.x, mass.y, mass.z)  # use a tuple as key to avoid duplicates
             self.doc.masses[key].append(node_id)  # add the node ID to the list of nodes for this mass
         print(f'reduced to {len(self.doc.masses)} grouped nodal masses from densities and load-to-mass')
+
+        print('Mass summary:')
+        print(f'  Structural Mass from densities: {STRUCT_MASS} tons')
+        print(f'  Load to Mass from Nodal Loads: {L2M_NODE} tons')
+        print(f'  Load to Mass from Beam Loads: {L2M_BEAM} tons (from total load {L2M_BEAM_LOAD} kN) (from distributed load {L2M_BEAM_LOAD_DIST} kN/m)')
+        print(f'  Load to Mass from Floor Loads: {L2M_FLOOR} tons')
+        print(f'  Load to Mass from Pressure Loads: {L2M_PRES} tons')
+        total_mass = STRUCT_MASS + L2M_NODE + L2M_BEAM + L2M_FLOOR + L2M_PRES
+        print(f'  Total Mass: {total_mass} tons')
+        
 
 
 
