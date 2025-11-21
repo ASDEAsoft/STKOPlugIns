@@ -3,6 +3,7 @@ from MidasGenImporter.stko_interface import stko_interface
 from MidasGenImporter.units_utils import unit_system
 from MidasGenImporter.section_utils import get_section_offset_and_area
 from MidasGenImporter.localaxes_utils import MIDASLocalAxesConvention
+from MidasGenImporter.area_load_utils import floor_polygon, floor_polygon_generator
 from collections import defaultdict
 import os
 import math
@@ -55,76 +56,6 @@ class _globals:
         'Z': 2,
     }
 
-class _floor_polygon:
-    class _edge:
-        """
-        A class to represent an edge of a polygon.
-        It is used to store the start and end vertices of the edge,
-        and compute the length of the edge.
-        """
-        def __init__(self, v1:int, v2:int, length:float, ratio:float):
-            self.v1 = v1
-            self.v2 = v2
-            self.length = length
-            self.ratio = ratio
-    """
-    A class to represent a polygon for floor loads.
-    It is used to store the vertices of the polygon, assumed to be in the XY plane and
-    ordered in a counter-clockwise manner.
-    The vertices are stored as a list of tuples (ID, x, y).
-    This class computes:
-    - the total area of the polygon using the shoelace formula.
-    - the total perimeter of the polygon.
-    - the list of edges as a list of tuples of indices of the vertices.
-    - for each edge, it computes the length and it's ratio to the total perimeter (this will be used to distribute the load along the edges).
-    """
-    def __init__(self, vertices:List[Tuple[int, float, float]]):
-        """
-        Initializes the polygon with the given vertices.
-        The vertices are assumed to be in the XY plane and ordered in a counter-clockwise manner.
-        """
-        self.vertices:List[Tuple[int, float, float]] = vertices
-        self.edges:List[_floor_polygon._edge] = []
-        self.area = 0.0
-        self.perimeter = 0.0
-        self._compute_polygon_properties()
-    def _compute_polygon_properties(self):
-        """
-        Computes the area, perimeter and edges of the polygon.
-        The area is computed using the shoelace formula.
-        The perimeter is computed as the sum of the lengths of the edges.
-        The edges are stored as a list of tuples (v1, v2) where v1 and v2 are the indices of the vertices.
-        For each edge, it computes the length and its ratio to the total perimeter.
-        """
-        n = len(self.vertices)
-        if n < 3:
-            raise Exception('A polygon must have at least 3 vertices')
-        # compute area using the shoelace formula
-        self.area = 0.0
-        for i in range(n):
-            id1, x1, y1 = self.vertices[i]
-            id2, x2, y2 = self.vertices[(i + 1) % n]
-            self.area += x1 * y2 - x2 * y1
-        self.area = abs(self.area) / 2.0
-        # compute total perimeter and edge structure
-        self.perimeter = 0.0
-        for i in range(n):
-            v1 = i
-            v2 = (i + 1) % n
-            id1, x1, y1 = self.vertices[v1]
-            id2, x2, y2 = self.vertices[v2]
-            length = math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
-            self.edges.append(_floor_polygon._edge(v1, v2, length, 0.0))
-            self.perimeter += length
-        # compute the ratio of each edge length to the total perimeter
-        for edge in self.edges:
-            edge.ratio = edge.length / self.perimeter if self.perimeter > 0 else 0.0
-    def __str__(self):
-        # let's print the edges' ratios
-        edges_str = ', '.join(f'({self.vertices[edge.v1][0]}, {self.vertices[edge.v2][0]}): {edge.ratio:.4f}' for edge in self.edges)
-        return f'Polygon with {len(self.vertices)} vertices, Area: {self.area:.3g}, Perimeter: {self.perimeter:.3g}, Edges: [{edges_str}]'
-    def __repr__(self):
-        return self.__str__()
 
 # The parser class is used to parse the ETABS text file and build the document
 class parser:
@@ -998,7 +929,7 @@ class parser:
             node_ids = [int(i) for i in words[12:] if i.isdigit()]
             # collect list of tuples(id,x,y) for the polygon vertices
             # and check they are all at the same Z coordinate within a tolerance
-            points: List[Tuple[int, float, float]] = []
+            points: Dict[int, Math.vec3] = {}
             z_coord = None
             z_error = 0.0
             bbox = FxBndBox()
@@ -1011,14 +942,14 @@ class parser:
                 if z_coord is None:
                     z_coord = vertex.z
                 z_error = max(z_error, abs(vertex.z - z_coord))
-                points.append((node_id, vertex.x, vertex.y))
+                points[node_id] = vertex
             bbox_diag = bbox.maxPoint - bbox.minPoint
             bbox_diag_avg = (bbox_diag.x + bbox_diag.y + bbox_diag.z) / 3.0
             tolerance = 1.0e-12*bbox_diag_avg
             if z_error > tolerance:
                 raise Exception(f'Nodes {node_ids} are not at the same Z coordinate, max error = {z_error}, tolerance = {tolerance}')
             # now we can create the polygon
-            polygon = _floor_polygon(points)
+            polygon_array = floor_polygon_generator(points, self.doc)
             # now, we can create the equivalent beam loads
             # for each edge of the polygon
             # and for each item in the associated floor load type
@@ -1031,19 +962,20 @@ class parser:
                 if lc is None:
                     raise Exception(f'Load case {lc_name} not found in the document')
                 # from area load (F/A) to concentrated load on the whole floor (F)
-                total_load = area_load * polygon.area
                 # now we have to 1) compute the distributed load (F/L) for each edge
                 # and 2) lump it to the 2 end-nodes of the edge
                 # so we can create equivalent nodal loads
                 eq_nodal_loads = defaultdict(float)
-                for edge in polygon.edges:
-                    # get the portion of the total load to apply on the 2 nodes this edge (F)
-                    edge_nodal_load = total_load * edge.ratio / 2.0
-                    # accumulate the load on the 2 end-nodes of the edge
-                    N1 = polygon.vertices[edge.v1][0]
-                    N2 = polygon.vertices[edge.v2][0]
-                    eq_nodal_loads[N1] += edge_nodal_load
-                    eq_nodal_loads[N2] += edge_nodal_load
+                for polygon in polygon_array:
+                    total_load = area_load * polygon.area
+                    for edge in polygon.edges:
+                        # get the portion of the total load to apply on the 2 nodes this edge (F)
+                        edge_nodal_load = total_load * edge.ratio / 2.0
+                        # accumulate the load on the 2 end-nodes of the edge
+                        N1 = polygon.vertices[edge.v1][0]
+                        N2 = polygon.vertices[edge.v2][0]
+                        eq_nodal_loads[N1] += edge_nodal_load
+                        eq_nodal_loads[N2] += edge_nodal_load
                 # now we can create the equivalent nodal loads
                 for node_id, edge_nodal_load in eq_nodal_loads.items():
                     # create a nodal load object
@@ -1057,8 +989,10 @@ class parser:
             for lc_name, lc in self.doc.load_cases.items():
                 # send a message with the number of equivalent nodal loads
                 num_eq_nodal_loads = sum(len(nodes) for _, nodes in lc.floor_loads.items())
-                self.interface.send_message(f'Load case {lc_name} has {num_eq_nodal_loads} equivalent nodal loads from floor loads', mtype=stko_interface.message_type.INFO)
-            
+                self.interface.send_message(f'Load case {lc_name} has {num_eq_nodal_loads} equivalent nodal loads from floor loads', 
+                                            mtype=stko_interface.message_type.INFO)
+        1/0
+
     # this function checks if the load cases are valid
     def _check_load_cases(self):
         for lc_name, lc in self.doc.load_cases.items():

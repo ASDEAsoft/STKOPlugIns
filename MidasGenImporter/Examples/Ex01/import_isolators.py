@@ -9,11 +9,12 @@ App.setColorWorkTreeByUsageFlag(False)
 App.clearTerminal()
 doc = App.caeDocument()
 
+# geometry ID
+geom_id = 1
+
+# make a selection set with all isolators
 sset_all_iso = doc.getSelectionSet(1)
-num_isolators = len(sset_all_iso.geometries[1].edges)
-print(f"Total isolators in selection set '{sset_all_iso.name}': {num_isolators}")
-
-
+print(f"Selection set '{sset_all_iso.name}' has {len(sset_all_iso.geometries[geom_id].edges)} edges")
 
 # isolator file
 fname = 'isolators.txt'
@@ -44,12 +45,12 @@ for key in np.unique(isol_types):
 	sset.id = doc.selectionSets.getlastkey(0) + 1
 	gmap = MpcSelectionSetItem()
 	gmap.wholeGeometry = False
-	sset.geometries[1] = gmap
+	sset.geometries[geom_id] = gmap
 	sset_map[key] = sset
 	doc.addSelectionSet(sset)
 
-geom = doc.getGeometry(1)
-N = len(sset_all_iso.geometries[1].edges)
+geom = doc.getGeometry(geom_id)
+N = len(sset_all_iso.geometries[geom_id].edges)
 print(f"Total edges: {N}")
 
 nfailed = 0
@@ -65,7 +66,7 @@ for edge_id in sset_all_iso.geometries[1].edges:
 	if dist[0] <= tol:
 		isol_type = isol_types[idx[0]]
 		sset_type = sset_map[isol_type]
-		sset_type.geometries[1].edges.append(edge_id)
+		sset_type.geometries[geom_id].edges.append(edge_id)
 	else:
 		nfailed += 1
 

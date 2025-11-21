@@ -60,9 +60,9 @@ class MIDASLocalAxesConvention:
         """
         N = len(points)
         if N == 2:
-            x = Math.vec3(0.0, -1.0, 0.0)
-            y = Math.vec3(1.0,  0.0, 0.0)
-            z = Math.vec3(0.0,  0.0, 1.0)
+            x = Math.vec3(-1.0,  0.0, 0.0)
+            y = Math.vec3( 0.0, -1.0, 0.0)
+            z = Math.vec3( 0.0,  0.0, 1.0)
             return Math.mat3(x, y, z)
         elif N == 3 or N == 4:
             #TODO: in midas it seems to be the same as in STKO

@@ -1,9 +1,12 @@
 import sys
 sys.path.append('C:/Develop/Utility/STKO-install/data/win64')
+sys.path.append(r'C:\Python310\Lib\site-packages')
 
 from PyMpc import *
 
 import importlib
+import MidasGenImporter.area_load_utils
+importlib.reload(MidasGenImporter.area_load_utils)
 import MidasGenImporter.parser
 import MidasGenImporter.builder
 import MidasGenImporter.stko_interface
@@ -22,6 +25,8 @@ importlib.reload(MidasGenImporter.stko_interface_plain)
 importlib.reload(MidasGenImporter.stko_interface_gui)
 from MidasGenImporter.stko_interface_plain import stko_interface_plain
 from MidasGenImporter.stko_interface_gui import stko_interface_gui
+
+App.setColorWorkTreeByUsageFlag(False)
 
 # create the stko interface
 # stko = stko_interface_plain(
