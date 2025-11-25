@@ -4,6 +4,7 @@ from MidasGenImporter.units_utils import unit_system
 from MidasGenImporter.section_utils import get_section_offset_and_area
 from MidasGenImporter.localaxes_utils import MIDASLocalAxesConvention
 from MidasGenImporter.area_load_utils import floor_polygon, floor_polygon_generator
+from MidasGenImporter.beam_load_utils import compute_equivalent_constant_load
 from collections import defaultdict
 import os
 import math
@@ -76,6 +77,9 @@ class parser:
         # that belong to the same load case
         # this is used for *USE-STLD, <name of the load case>
         current_load_case = None
+        # if a frame overlaps with a fully rigid elastic link, we need to remove the frame.
+        # with this map, we can get the link id from the removed frame id (useful for loads)
+        self.removed_frames_to_elastic_link : Dict[int, int] = dict()
         # build command dictionary
         with open(fname, 'r') as ifile:
             # first handle the multi-line commands (\ at the end of the line)
@@ -261,6 +265,7 @@ class parser:
                             raise Exception(f'Elastic link {id} is not fully rigid ({elastic_link.link.rigid_flags}), but it overlaps with frame {old_frame_id} which is elastic')
                         # add the frame to the list to remove
                         frames_to_remove.append(old_frame_id)
+                        self.removed_frames_to_elastic_link[old_frame_id] = id
             # increment the ID for the next elastic link
             id += 1
         if self.interface is not None:
@@ -689,6 +694,12 @@ class parser:
         ECCEN = bECCEN, ECCDIR, I-END, J-END, bJ-END
         VALUE = D1, P1, D2, P2, D3, P3, D4, P4
         '''
+        def _get_frame_or_link_id(elem_id: int) -> int:
+            link_id = self.removed_frames_to_elastic_link.get(elem_id, None)
+            if link_id is not None:
+                return link_id
+            return elem_id
+
         for item, values in self.commands.items():
             if not '*BEAMLOAD' in item:
                 continue
@@ -705,10 +716,19 @@ class parser:
                 words = _split_line(value, skip_empty=False)
                 if len(words) < 18:
                     raise Exception('Invalid beam load line: {}, expecting at least 18 values'.format(value))
-                elem_list = _mgt_string_to_id_or_range(words[0])
+                # NOTE: this plain conversion is fine IF we have constant uniform loads only!!
+                mgt_ele_list = _mgt_string_to_id_or_range(words[0])
+                elem_list = [] # for beam load
+                link_list = [] # for equivalent nodal load (they don't support beam loads on elastic links)
+                for ele_id in mgt_ele_list:
+                    link_id = self.removed_frames_to_elastic_link.get(ele_id, None)
+                    if link_id is not None:
+                        link_list.append(link_id)
+                    else:
+                        elem_list.append(ele_id)
                 cmd = words[1]
-                if cmd != 'BEAM':
-                    raise Exception('Invalid beam load command: {}, expecting BEAM'.format(cmd))
+                if cmd != 'BEAM' and cmd != 'FLOOR':
+                    raise Exception('Invalid beam load command: {}, expecting BEAM or FLOOR'.format(cmd))
                 load_type = words[2]
                 if load_type != 'UNILOAD':
                     raise Exception('Invalid beam load type: {}, expecting UNILOAD'.format(load_type))
@@ -728,13 +748,7 @@ class parser:
                 if eccen != 'NO':
                     raise Exception('Beam loads with eccen are not supported, found: {}'.format(eccen))
                 # take the second value of VALUE, that's the constant value in case of UNILOAD
-                load_component = float(words[11])
-                # support partial loads in a simplified way:
-                # consider only the uniform value [11], but scale it if D2-D1 < 1.0
-                D1 = float(words[10])
-                D2 = float(words[12])
-                scale = D2-D1
-                load_component *= scale
+                load_component = compute_equivalent_constant_load([float(v) for v in words[10:18]])
                 # make load vector
                 load_value = (load_component if component == 0 else 0.0,
                               load_component if component == 1 else 0.0,
@@ -743,6 +757,30 @@ class parser:
                 beam_load_obj = beam_load(load_value, is_local)
                 # add the load to the load case
                 lc.beam_loads[beam_load_obj].extend(elem_list)  # add the element IDs to the list of elements for this load
+                # now, if we have link elements, we need to convert the beam load to equivalent nodal loads
+                if len(link_list) > 0:
+                    if is_local:
+                        raise Exception('Beam loads on elastic links cannot be in local direction, found local beam load on links')
+                    for link_id in link_list:
+                        link_elem = self.doc.frames.get(link_id, None)
+                        if link_elem is None:
+                            raise Exception(f'Elastic link ID: {link_id} not found in document')
+                        n1, n2 = link_elem.nodes
+                        node1 = self.doc.vertices.get(n1, None)
+                        node2 = self.doc.vertices.get(n2, None)
+                        if node1 is None or node2 is None:
+                            raise Exception(f'Elastic link ID: {link_id} has invalid node IDs: {n1}, {n2}')
+                        L = (node2 - node1).norm()
+                        # compute equivalent nodal loads for the link element
+                        eqLoad = load_component * L / 2.0
+                        fx = eqLoad if component == 0 else 0.0
+                        fy = eqLoad if component == 1 else 0.0
+                        fz = eqLoad if component == 2 else 0.0
+                        # create the nodal load object
+                        nodal_load_obj = nodal_load((fx, fy, fz, 0.0, 0.0, 0.0))
+                        # add it to the load case
+                        lc.nodal_loads[nodal_load_obj].extend([n1, n2])  # add the node IDs to the list of nodes for this load
+                
         if self.interface is not None:
             for lc_name, lc in self.doc.load_cases.items():
                 if len(lc.beam_loads) > 0:
@@ -991,7 +1029,6 @@ class parser:
                 num_eq_nodal_loads = sum(len(nodes) for _, nodes in lc.floor_loads.items())
                 self.interface.send_message(f'Load case {lc_name} has {num_eq_nodal_loads} equivalent nodal loads from floor loads', 
                                             mtype=stko_interface.message_type.INFO)
-        1/0
 
     # this function checks if the load cases are valid
     def _check_load_cases(self):
@@ -1009,8 +1046,9 @@ class parser:
         ele_length_map : Dict[int, float] = {}
         for ele_id, ele in self.doc.frames.items():
             # skip link elements
-            if ele.link is not None:
-                continue
+            # UPDATE: we now consider link elements for mass calculation (in case beam loads are applied on them)
+            #if ele.link is not None:
+            #    continue
             # get element length
             n1, n2 = ele.nodes
             node1 = self.doc.vertices.get(n1, None)
@@ -1019,6 +1057,9 @@ class parser:
                 raise Exception(f'Frame element {ele_id} has invalid nodes: {n1}, {n2}')
             length = (node2 - node1).norm()
             ele_length_map[ele_id] = length
+            # now we can skip link elements (we only need to keep track of their length)
+            if ele.link is not None:
+                continue
             # get material density
             mat:elastic_material = self.doc.elastic_materials.get(ele.mat, None)
             if mat is None:
