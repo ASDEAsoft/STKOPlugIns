@@ -440,6 +440,7 @@ class builder:
         Areas:
         - STKO and MIDAS defaults are the same
         '''
+
         # tolerance for normalized axis components
         tol = 1.0e-3
 
@@ -456,8 +457,6 @@ class builder:
                 edge_data.geom.getLocalAxesOnEdge(edge_data.subshape_id, 0.0, stko_dx, stko_dy, stko_dz)
                 if axis.dot(stko_dx) < 0.0:
                     #print(f'Edge {midas_id} has inconsistent orientation with the local axes. Reversing it...')
-                    if edge_data.geom.id == 1 and edge_data.subshape_id == 2077:
-                        print('reversing edge 2077 in geometry 1 from midas_id {} ({})'.format(midas_id, stype))
                     edge_data.geom.shape.toggleEdgeReversedFlag(edge_data.subshape_id)
             elif stype == MpcSubshapeType.Face:
                 area_data = self._area_map.get(midas_id, None)
@@ -516,7 +515,7 @@ class builder:
             area_data.geom.getLocalAxesOnEdge(area_data.subshape_id, 0.0, stko_dx, stko_dy, stko_dz)
             # check similarity
             if stko_dx.dot(dx) < 0.99:
-                raise Exception(f'Frame {midas_id} has inconsistent local axes with the MIDAS defaults. Please check the frame orientation in MIDAS.')
+                raise Exception(f'Frame {midas_id} has inconsistent local axes with the MIDAS defaults {stko_dx.dot(dx)}.\nPlease check the frame orientation in MIDAS.')
             # now we are sure the main axis is aligned with the frame
             # next step: if the local y (or z) is not aligned with the one from STKO's defaults,
             # we need to make a local axis object in STKO

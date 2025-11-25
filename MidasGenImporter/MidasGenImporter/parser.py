@@ -133,6 +133,7 @@ class parser:
         self._parse_floor_loads()
         self._check_load_cases()
         self._parse_masses()
+        self._load_summary()
 
     # this function parses the units and adds them to the document
     # the units are stored in the document as a dictionary
@@ -785,35 +786,6 @@ class parser:
             for lc_name, lc in self.doc.load_cases.items():
                 if len(lc.beam_loads) > 0:
                     self.interface.send_message(f'Parsed {len(lc.beam_loads)} beam loads for load case {lc_name}', mtype=stko_interface.message_type.INFO)
-
-        # beam load summary
-        print('Beam Loads Summary:')
-        Q_SUM_ALL = 0.0
-        N_SUM_ALL = 0.0
-        for lc_name, lc in self.doc.load_cases.items():
-            print(f' Load Case: {lc_name}')
-            Q_SUM = 0.0 # sum load per unit length
-            N_SUM = 0.0 # sum of total load from beam loads
-            for beam_load_obj, elem_list in lc.beam_loads.items():
-                value = beam_load_obj.value[2]
-                for elem_id in elem_list:
-                    elem = self.doc.frames.get(elem_id, None)
-                    if elem is None:
-                        raise Exception(f'  Element ID: {elem_id} not in document frames')
-                    n1,n2 = elem.nodes
-                    node1 = self.doc.vertices.get(n1, None)
-                    node2 = self.doc.vertices.get(n2, None)
-                    if node1 is None or node2 is None:
-                        raise Exception(f'  Element ID: {elem_id} has invalid node IDs: {n1}, {n2}')
-                    L = (node2 - node1).norm()
-                    Q_SUM += value
-                    N_SUM += value * L
-            print(f'    Total uniform load per unit length (Z dir): {Q_SUM} kN/m')
-            print(f'    Total uniform load from beam loads (Z dir): {N_SUM} kN')
-            Q_SUM_ALL += Q_SUM
-            N_SUM_ALL += N_SUM
-        print(f' Overall total uniform load per unit length (Z dir): {Q_SUM_ALL} kN/m')
-        print(f' Overall total uniform load from beam loads (Z dir): {N_SUM_ALL} kN')
                     
     # this function parses the pressure loads and adds them to the document
     def _parse_pressure_loads(self):
@@ -1238,16 +1210,101 @@ class parser:
         print(f'reduced to {len(self.doc.masses)} grouped nodal masses from densities and load-to-mass')
 
         print('Mass summary:')
-        print(f'  Structural Mass from densities: {STRUCT_MASS} tons')
-        print(f'  Load to Mass from Nodal Loads: {L2M_NODE} tons')
-        print(f'  Load to Mass from Beam Loads: {L2M_BEAM} tons (from total load {L2M_BEAM_LOAD} kN) (from distributed load {L2M_BEAM_LOAD_DIST} kN/m)')
-        print(f'  Load to Mass from Floor Loads: {L2M_FLOOR} tons')
-        print(f'  Load to Mass from Pressure Loads: {L2M_PRES} tons')
+        print(f'  Structural Mass from densities: {STRUCT_MASS:.4e} tons')
+        print(f'  Load to Mass from Nodal Loads: {L2M_NODE:.4e} tons')
+        print(f'  Load to Mass from Beam Loads: {L2M_BEAM:.4e} tons (from total load {L2M_BEAM_LOAD:.4e} kN) (from distributed load {L2M_BEAM_LOAD_DIST:.4e} kN/m)')
+        print(f'  Load to Mass from Floor Loads: {L2M_FLOOR:.4e} tons')
+        print(f'  Load to Mass from Pressure Loads: {L2M_PRES:.4e} tons')
         total_mass = STRUCT_MASS + L2M_NODE + L2M_BEAM + L2M_FLOOR + L2M_PRES
-        print(f'  Total Mass: {total_mass} tons')
+        print(f'  Total Mass: {total_mass:.4e} tons')
         
+    # this function computes and prints a load summary
+    def _load_summary(self):
+        print('Final Load Summary (Fz):')
+        N_CONC = 0.0
+        N_BEAM = 0.0
+        N_PRES = 0.0
+        for lc_name, lc in self.doc.load_cases.items():
+            print(f' Load Case: {lc_name}')
+            N_CONC_LC = 0.0
+            N_BEAM_LC = 0.0
+            N_PRES_LC = 0.0
+            for load, nodes in lc.nodal_loads.items():
+                Fz = load.value[2]
+                N_CONC_LC += Fz * len(nodes)
+            for load, elems in lc.beam_loads.items():
+                Fz = load.value[2]
+                if load.local:
+                    raise Exception('Local beam loads are not supported for load summary')
+                for elem_id in elems:
+                    ele = self.doc.frames.get(elem_id, None)
+                    if ele is None:
+                        raise Exception(f'  Element ID: {elem_id} not in document frames')
+                    n1,n2 = ele.nodes
+                    node1 = self.doc.vertices.get(n1, None)
+                    node2 = self.doc.vertices.get(n2, None)
+                    if node1 is None or node2 is None:
+                        raise Exception(f'  Element ID: {elem_id} has invalid node IDs: {n1}, {n2}')
+                    L = (node2 - node1).norm()
+                    N_BEAM_LC += Fz * L
+            for load, elems in lc.pressure_loads.items():
+                for elem_id in elems:
+                    # get element
+                    ele = self.doc.areas.get(elem_id, None)
+                    if ele is None:
+                        raise Exception(f'Area element {elem_id} not found in the document')
+                    # get nodes
+                    nodes = []
+                    for node_id in ele.nodes:
+                        node = self.doc.vertices.get(node_id, None)
+                        if node is None:
+                            raise Exception(f'Area element {elem_id} has invalid node: {node_id}')
+                        nodes.append(node)
+                    # compute the component in the global Z direction
+                    if load.local:
+                        # get local axes from MIDAS defaults
+                        T_midas = MIDASLocalAxesConvention.get_local_axes(nodes)
+                        # rotate about the local z if user angle is defined
+                        if abs(ele.angle) > 1.0e-10:
+                            dx = T_midas.col(0)
+                            dy = T_midas.col(1)
+                            dz = T_midas.col(2)
+                            q = Math.quaternion.fromAxisAngle(dz, ele.angle/180.0*math.pi)
+                            dy = q.rotate(dy).normalized()
+                            dx = q.rotate(dx).normalized()
+                            T_midas = Math.mat3(dx, dy, dz)
+                        Fz = (T_midas * Math.vec3(*load.value)).z  # global Z direction
+                    else:
+                        Fz = load.value[2]  # global Z direction
+                    # compute element area (they can have 3 or 4 nodes)
+                    ele_A = 0.0
+                    p01 = nodes[1] - nodes[0]  # vector from node 0 to node 1
+                    p02 = nodes[2] - nodes[0]  # vector from node 0 to node 2
+                    ele_A = p01.cross(p02).norm() / 2.0
+                    if len(nodes) == 4:
+                        p03 = nodes[3] - nodes[0]
+                        ele_A += p02.cross(p03).norm() / 2.0
+                    N_PRES_LC += Fz * ele_A
+            print(f'   Total Nodal Load: {N_CONC_LC:.4e} kN')
+            print(f'   Total Beam Load: {N_BEAM_LC:.4e} kN')
+            print(f'   Total Pressure Load: {N_PRES_LC:.4e} kN')
+            N_CONC += N_CONC_LC
+            N_BEAM += N_BEAM_LC
+            N_PRES += N_PRES_LC
+        print(f' Overall Total Nodal Load: {N_CONC:.4e} kN')
+        print(f' Overall Total Beam Load: {N_BEAM:.4e} kN')
+        print(f' Overall Total Pressure Load: {N_PRES:.4e} kN')
 
+        N_NONSTRUCT = N_CONC + N_BEAM + N_PRES
+        print(f' Overall Total Non-Structural Load: {N_NONSTRUCT:.4e} kN')
 
-
+        N_MASS = 0.0
+        g = self.doc.struct_type.grav
+        for mass, node_ids in self.doc.masses_dens.items():
+            Fz = -g * mass
+            N_MASS += Fz * len(node_ids)
+        print(f' Overall Total Structural Load: {N_MASS:.4e} kN')
+        N_TOTAL = N_NONSTRUCT + N_MASS
+        print(f' Overall Total Load: {N_TOTAL:.4e} kN')
 
 
