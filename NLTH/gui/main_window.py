@@ -20,19 +20,11 @@ class NLTHEvaluatorCallback(NLTHEvaluatorCallbackBase, QObject):
     # Emitted when progress changes (progress : float 0.0 to 1.0)
     progressUpdated = Signal(float)
 
-    # Emitted when an update of the range is requested
-    # (db_id: int, index: int, count: int)
-    updateRangeRequested = Signal(int, int, int)  
-    
     def __init__(self, parent=None):
         NLTHEvaluatorCallbackBase.__init__(self)
         QObject.__init__(self, parent)
         self._last_emitted_progress = 0.0
         self._progress_threshold = 0.01  # Only emit every 1% change
-        self._update_timer = QTimer(self)
-        self._update_timer.setInterval(1000)  # 1000 ms
-        self._update_timer.timeout.connect(self.set_update_requested)
-        self._update_timer.start()
     
     def on_progress(self, progress: float):
         """Called to report progress."""
@@ -40,16 +32,6 @@ class NLTHEvaluatorCallback(NLTHEvaluatorCallbackBase, QObject):
         if abs(progress - self._last_emitted_progress) >= self._progress_threshold or progress >= 1.0:
             self._last_emitted_progress = progress
             self.progressUpdated.emit(progress)
-    
-    def set_update_range(self, db_id : int, index : int, count : int):
-        """Called to set the range of data to be updated."""
-        super().set_update_range(db_id, index, count)
-        self.updateRangeRequested.emit(db_id, index, count)
-        
-    def on_finished(self):
-        """Called when the evaluation is finished."""
-        self._update_timer.stop()
-        print("Evaluation callback finished.")
 
 class EvaluationWorker(QObject):
     """Worker object for running the evaluation in the background."""
@@ -58,7 +40,7 @@ class EvaluationWorker(QObject):
     finished = Signal()
     error = Signal(str)
     
-    def __init__(self, evaluator, callback):
+    def __init__(self, evaluator : NLTHEvaluator, callback: NLTHEvaluatorCallback):
         super().__init__()
         self.callback = callback
         self.evaluator = evaluator
@@ -74,6 +56,8 @@ class EvaluationWorker(QObject):
             self.finished.emit()
 
 class NLTHMainWindow(QDialog):
+    """Main window for NLTH post-processing tools."""
+    
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("NLTH Post-Processing Tools")
@@ -161,7 +145,6 @@ class NLTHMainWindow(QDialog):
             # Create callback and connect signals
             self.callback = NLTHEvaluatorCallback(self)
             self.callback.progressUpdated.connect(self.on_progress_updated)
-            self.callback.updateRangeRequested.connect(self.on_update_range_requested)
 
             # Create evaluator
             self.evaluator = NLTHEvaluator(db_ids, isolator_set_id, self.callback)
@@ -175,7 +158,6 @@ class NLTHMainWindow(QDialog):
             
             # Connect thread and worker signals with proper cleanup order
             self.worker_thread.started.connect(self.worker.run_evaluation)
-            self.worker.finished.connect(self.callback.on_finished)
             self.worker.finished.connect(self.worker_thread.quit)
             
             # Connect cleanup signals - these will be called after thread quits
@@ -202,14 +184,6 @@ class NLTHMainWindow(QDialog):
         percentage = int(progress * 100)
         self.progress_bar.setValue(percentage)
 
-    def on_update_range_requested(self, db_id: int, index: int, count: int):
-        """Slot called when an update of the range is requested."""
-        try:
-            print(f"   GUI Update range set: DB ID={db_id}, Index={index}, Count={count}")
-            self.isolator_widget.on_update_range_requested(db_id, index, count, self.evaluator)
-        except Exception as e:
-            print(f"Error updating plot during evaluation: {e}")
-    
     def on_evaluation_finished(self):
         """Slot called when evaluation is finished."""
         print("Evaluation completed successfully.")
@@ -224,6 +198,8 @@ class NLTHMainWindow(QDialog):
             self.worker_thread.deleteLater()
             self.worker_thread = None
         self.callback = None
+
+        # TODO: set evalutator to sub-widgets if needed
     
     def on_evaluation_error(self, error_message: str):
         """Slot called when an error occurs during evaluation."""

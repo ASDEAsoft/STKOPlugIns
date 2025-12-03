@@ -107,7 +107,6 @@ class DatabaseWidget(QWidget):
         
         # Create layout
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
         
         # Create tree view
         self.tree_view = QTreeView()
