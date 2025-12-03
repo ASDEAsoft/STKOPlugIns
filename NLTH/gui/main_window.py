@@ -57,7 +57,7 @@ class EvaluationWorker(QObject):
 
 class NLTHMainWindow(QDialog):
     """Main window for NLTH post-processing tools."""
-    
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("NLTH Post-Processing Tools")
@@ -200,6 +200,7 @@ class NLTHMainWindow(QDialog):
         self.callback = None
 
         # TODO: set evalutator to sub-widgets if needed
+        self.isolator_widget.set_evaluator(self.evaluator)
     
     def on_evaluation_error(self, error_message: str):
         """Slot called when an error occurs during evaluation."""
